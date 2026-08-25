@@ -1,0 +1,36 @@
+name: Validate archive pipeline
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'manifest/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/workflows/**'
+      - 'archive/**'
+      - 'docs/**'
+  push:
+    branches: [main]
+    paths:
+      - 'manifest/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/workflows/**'
+      - 'archive/**'
+      - 'docs/**'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate manifest and show matrix
+        run: python scripts/prepare_matrix.py --manifest manifest/standards.json

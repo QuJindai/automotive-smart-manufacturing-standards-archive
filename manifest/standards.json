@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "generated_baseline": "2026-08-25",
+  "assets": [
+    {
+      "id": "NIST-AI-100-1",
+      "title": "NIST AI RMF 1.0",
+      "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf",
+      "filename": "NIST_AI_100-1_AI_RMF_1.0.pdf",
+      "kind": "pdf",
+      "artifact_group": "nist-public-fulltext",
+      "license_class": "public-government",
+      "redistributable": true,
+      "expected_size_bytes": 1946127
+    },
+    {
+      "id": "NIST-AI-600-1",
+      "title": "NIST AI 600-1 Generative AI Profile",
+      "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf",
+      "filename": "NIST_AI_600-1_Generative_AI_Profile.pdf",
+      "kind": "pdf",
+      "artifact_group": "nist-public-fulltext",
+      "license_class": "public-government",
+      "redistributable": true,
+      "expected_size_bytes": 1174643
+    },
+    {
+      "id": "NIST-AI-100-2e2025",
+      "title": "NIST AI 100-2e2025 Adversarial Machine Learning",
+      "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-2e2025.pdf",
+      "filename": "NIST_AI_100-2e2025_Adversarial_ML.pdf",
+      "kind": "pdf",
+      "artifact_group": "nist-public-fulltext",
+      "license_class": "public-government",
+      "redistributable": true,
+      "expected_size_bytes": 1964469
+    },
+    {
+      "id": "NIST-AI-700-2",
+      "title": "NIST AI 700-2 ARIA Pilot Evaluation",
+      "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.700-2.pdf",
+      "filename": "NIST_AI_700-2_ARIA_Pilot_Evaluation.pdf",
+      "kind": "pdf",
+      "artifact_group": "nist-public-fulltext",
+      "license_class": "public-government",
+      "redistributable": true,
+      "expected_size_bytes": 8040325
+    },
+    {
+      "id": "NIST-CI-CONCEPT-2026",
+      "title": "NIST AI RMF Critical Infrastructure Profile Concept Note",
+      "url": "https://www.nist.gov/system/files/documents/2026/04/08/Draft%20Concept%20Note_%20Development%20of%20the%20NIST%20AI%20RMF%20Trustworthy%20Use%20of%20AI%20in%20Critical%20Infrastructure%20Profile.pdf",
+      "filename": "NIST_2026_AI_RMF_Critical_Infrastructure_Concept_Note.pdf",
+      "kind": "pdf",
+      "artifact_group": "nist-public-fulltext",
+      "license_class": "public-government",
+      "redistributable": true,
+      "expected_size_bytes": 65274
+    },
+    {
+      "id": "NIST-SMART-MFG-ROADMAP-2026",
+      "title": "NIST 2026 AI/ML Smart Manufacturing Roadmap",
+      "url": "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=960263",
+      "filename": "NIST_2026_AI_ML_Smart_Manufacturing_Roadmap.pdf",
+      "kind": "pdf",
+      "artifact_group": "nist-public-fulltext",
+      "license_class": "public-government",
+      "redistributable": true,
+      "expected_size_bytes": 7358973
+    },
+    {
+      "id": "IDTA-01001-3.1.2",
+      "title": "AAS Part 1 Metamodel 3.1.2",
+      "url": "https://industrialdigitaltwin.org/wp-content/uploads/2025/11/IDTA-01001-3-1-2_AAS-Specification_Part1_Metamodel.pdf",
+      "filename": "IDTA_01001_3-1-2_AAS_Part1_Metamodel.pdf",
+      "kind": "pdf",
+      "artifact_group": "idta-aas-open-specifications",
+      "license_class": "open-specification",
+      "redistributable": true,
+      "expected_size_bytes": 2492535
+    },
+    {
+      "id": "IDTA-01002-3.2",
+      "title": "AAS Part 2 API 3.2",
+      "url": "https://industrialdigitaltwin.org/en/wp-content/uploads/sites/2/2026/07/IDTA-01002-3-2_SpecificationAssetAdministrationShell_Part2_API.pdf",
+      "filename": "IDTA_01002_3-2_AAS_Part2_API.pdf",
+      "kind": "pdf",
+      "artifact_group": "idta-aas-open-specifications",
+      "license_class": "open-specification",
+      "redistributable": true,
+      "expected_size_bytes": 1406546
+    },
+    {
+      "id": "IDTA-01003-a-3.1.1",
+      "title": "AAS Part 3a Data Specification IEC 61360",
+      "url": "https://industrialdigitaltwin.org/en/wp-content/uploads/sites/2/2025/08/IDTA-01003-a-3-1-1_AAS-Specification_Part3a_DataSpecification.pdf",
+      "filename": "IDTA_01003a_3-1-1_AAS_Part3a_IEC61360.pdf",
+      "kind": "pdf",
+      "artifact_group": "idta-aas-open-specifications",
+      "license_class": "open-specification",
+      "redistributable": true,
+      "expected_size_bytes": 993572
+    },
+    {
+      "id": "IDTA-01003-b-3.0",
+      "title": "AAS Part 3b Data Specification Units",
+      "url": "https://industrialdigitaltwin.org/en/wp-content/uploads/sites/2/2026/07/IDTA-01003-b-3-0_AAS-Specification_Part3b_DataSpecification.pdf",
+      "filename": "IDTA_01003b_3-0_AAS_Part3b_Units.pdf",
+      "kind": "pdf",
+      "artifact_group": "idta-aas-open-specifications",
+      "license_class": "open-specification",
+      "redistributable": true,
+      "expected_size_bytes": 1305530
+    },
+    {
+      "id": "IDTA-01004-3.1",
+      "title": "AAS Part 4 Security 3.1",
+      "url": "https://industrialdigitaltwin.org/en/wp-content/uploads/sites/2/2026/07/IDTA-01004-3-1_AAS-Specification_Part4_Security.pdf",
+      "filename": "IDTA_01004_3-1_AAS_Part4_Security.pdf",
+      "kind": "pdf",
+      "artifact_group": "idta-aas-open-specifications",
+      "license_class": "open-specification",
+      "redistributable": true,
+      "expected_size_bytes": 4743310
+    },
+    {
+      "id": "IDTA-01005-3.2",
+      "title": "AAS Part 5 AASX Package File Format 3.2",
+      "url": "https://industrialdigitaltwin.org/en/wp-content/uploads/sites/2/2026/07/IDTA-01005-3-2_SpecificationAssetAdministrationShell_Part5_PackageFileFormat.pdf",
+      "filename": "IDTA_01005_3-2_AAS_Part5_AASX.pdf",
+      "kind": "pdf",
+      "artifact_group": "idta-aas-open-specifications",
+      "license_class": "open-specification",
+      "redistributable": true,
+      "expected_size_bytes": 2804649
+    },
+    {
+      "id": "IDTA-AAS-METAMODEL-REPO",
+      "title": "AAS Metamodel source snapshot",
+      "url": "https://github.com/admin-shell-io/aas-specs-metamodel/archive/refs/heads/master.zip",
+      "filename": "admin-shell-io_aas-specs-metamodel_master.zip",
+      "kind": "zip",
+      "artifact_group": "open-source-small",
+      "license_class": "open-source",
+      "redistributable": true,
+      "expected_size_bytes": 11037006,
+      "notes": "Default branch is master."
+    },
+    {
+      "id": "IDTA-AAS-API-REPO",
+      "title": "AAS API source snapshot",
+      "url": "https://github.com/admin-shell-io/aas-specs-api/archive/refs/heads/main.zip",
+      "filename": "admin-shell-io_aas-specs-api_main.zip",
+      "kind": "zip",
+      "artifact_group": "open-source-small",
+      "license_class": "open-source",
+      "redistributable": true,
+      "expected_size_bytes": 1817502
+    },
+    {
+      "id": "IDTA-AAS-SECURITY-REPO",
+      "title": "AAS Security source snapshot",
+      "url": "https://github.com/admin-shell-io/aas-specs-security/archive/refs/heads/main.zip",
+      "filename": "admin-shell-io_aas-specs-security_main.zip",
+      "kind": "zip",
+      "artifact_group": "open-source-small",
+      "license_class": "open-source",
+      "redistributable": true,
+      "expected_size_bytes": 3681018
+    },
+    {
+      "id": "CATENAX-ODRL-PROFILE",
+      "title": "Catena-X ODRL Profile source snapshot",
+      "url": "https://github.com/catenax-eV/cx-odrl-profile/archive/refs/heads/main.zip",
+      "filename": "catenax-eV_cx-odrl-profile_main.zip",
+      "kind": "zip",
+      "artifact_group": "open-source-small",
+      "license_class": "open-source",
+      "redistributable": true,
+      "expected_size_bytes": 70078
+    },
+    {
+      "id": "TRACTUSX-SEMANTIC-MODELS",
+      "title": "Eclipse Tractus-X semantic models source snapshot",
+      "url": "https://github.com/eclipse-tractusx/sldt-semantic-models/archive/refs/heads/main.zip",
+      "filename": "eclipse-tractusx_sldt-semantic-models_main.zip",
+      "kind": "zip",
+      "artifact_group": "tractus-semantic-models",
+      "license_class": "open-source",
+      "redistributable": true,
+      "expected_size_bytes": 96960582
+    },
+    {
+      "id": "IDTA-SUBMODEL-TEMPLATES",
+      "title": "IDTA Submodel Templates source snapshot",
+      "url": "https://github.com/admin-shell-io/submodel-templates/archive/refs/heads/main.zip",
+      "filename": "admin-shell-io_submodel-templates_main.zip",
+      "kind": "zip",
+      "artifact_group": "idta-submodel-templates",
+      "license_class": "open-source",
+      "redistributable": true,
+      "expected_size_bytes": 111608237,
+      "split_parts": 2
+    }
+  ]
+}
