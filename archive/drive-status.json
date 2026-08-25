@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "archive_root_logical_path": "/汽车智能制造标准研究_2026/标准原文资产库_2026",
+  "privacy_rule": "Do not commit Google Drive file IDs or private Drive URLs.",
+  "baseline_date": "2026-08-25",
+  "pipeline_state": "pending_new_repository_acceptance",
+  "entries": [
+    {
+      "artifact_group": "nist-public-fulltext",
+      "status": "archived",
+      "logical_drive_path": "01_公开原文/NIST_公开原文全文包_20260825.zip"
+    },
+    {
+      "artifact_group": "idta-aas-open-specifications",
+      "status": "archived",
+      "logical_drive_path": "01_公开原文/IDTA_AAS_开放规范PDF包_20260825.zip"
+    },
+    {
+      "artifact_group": "open-source-small",
+      "status": "archived",
+      "logical_drive_path": "02_开放规范源码/开放规范源码_小仓库包_20260825.zip"
+    },
+    {
+      "artifact_group": "tractus-semantic-models",
+      "status": "archived",
+      "logical_drive_path": "02_开放规范源码/TractusX_语义模型开放源码包_20260825.zip"
+    },
+    {
+      "artifact_group": "idta-submodel-templates-part00",
+      "status": "archived",
+      "logical_drive_path": "02_开放规范源码/IDTA_SubmodelTemplates_分卷_part00_20260825.zip"
+    },
+    {
+      "artifact_group": "idta-submodel-templates-part01",
+      "status": "archived",
+      "logical_drive_path": "02_开放规范源码/IDTA_SubmodelTemplates_分卷_part01_20260825.zip"
+    },
+    {
+      "artifact_group": "archive-index",
+      "status": "archived",
+      "logical_drive_path": "04_索引与下载日志/标准原文资产库_索引与下载日志_20260825.zip"
+    },
+    {
+      "artifact_group": "split-reconstruction-index",
+      "status": "archived",
+      "logical_drive_path": "04_索引与下载日志/开放规范源码_分卷索引与重组脚本_20260825.zip"
+    }
+  ]
+}
