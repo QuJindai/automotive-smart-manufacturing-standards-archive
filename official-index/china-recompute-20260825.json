@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "baseline_date": "2026-08-25",
+  "status": "FROZEN",
+  "historical_baselines": {
+    "R05_2026_08_20": {"records": 157, "adoption_relations": 23},
+    "R09_pre_recompute": {"records": 178, "adoption_relations": 32}
+  },
+  "R09_v2": {
+    "china_materialized_nodes": 211,
+    "china_adoption_relations": 32,
+    "r02_r08_raw_instances": 1169,
+    "r02_r08_exact_reference_unique_nodes": 1167,
+    "exact_duplicate_groups": 2,
+    "materialized_relation_records": 494,
+    "new_nodes": 33,
+    "status_refreshes": 23,
+    "new_relations": 12
+  },
+  "R10_v2": {
+    "node_count": 1167,
+    "cluster_delta": {
+      "C01": 4,
+      "C03": 3,
+      "C04": 1,
+      "C10": 2,
+      "C11": 6,
+      "C22": 5,
+      "C24": 7,
+      "C26": 3,
+      "C27": 1,
+      "C29": 1
+    }
+  },
+  "R11_v2": {
+    "A": 159,
+    "B": 874,
+    "C": 63,
+    "D": 71,
+    "china_R05_subset": {"A": 2, "B": 158, "C": 2, "D": 49}
+  },
+  "R01_caveat": {
+    "current_published": 929,
+    "lifecycle_nodes": 2677,
+    "replacement_edges": 1369,
+    "row_level_registry_materialized": false,
+    "rule": "Do not publish a global exact unique total including R01 until the 929 row-level registry is materialized."
+  },
+  "public_repository_policy": "Metadata and official evidence only; no Chinese national/industry standard full text or private Drive identifiers."
+}
