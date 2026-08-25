@@ -7,13 +7,15 @@ import argparse
 import csv
 import hashlib
 import json
-import math
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
-from scripts.prepare_matrix import MAX_ARTIFACT_BYTES, load_manifest, validate_manifest
+try:
+    from scripts.prepare_matrix import MAX_ARTIFACT_BYTES, load_manifest, validate_manifest
+except ModuleNotFoundError:  # direct execution: python scripts/fetch_assets.py
+    from prepare_matrix import MAX_ARTIFACT_BYTES, load_manifest, validate_manifest
 
 EVIDENCE_FIELDS = [
     "id",
@@ -116,7 +118,11 @@ def download_with_curl(url: str, destination: Path) -> None:
 
 def _select_assets(assets: list[dict], mode: str, group: str, asset_id: str) -> list[dict]:
     if mode == "group":
-        selected = [asset for asset in assets if asset["artifact_group"] == group and "split_parts" not in asset]
+        selected = [
+            asset
+            for asset in assets
+            if asset["artifact_group"] == group and "split_parts" not in asset
+        ]
         if not selected:
             raise ValueError(f"no non-split assets found for group {group!r}")
         return selected
@@ -131,6 +137,19 @@ def _write_evidence(out_dir: Path, rows: list[dict]) -> None:
         writer = csv.DictWriter(handle, fieldnames=EVIDENCE_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _reconstruction_metadata(asset: dict, source_size: int, source_sha: str, part_total: int) -> dict:
+    parts = [f"{asset['filename']}.part{index:02d}of{part_total:02d}" for index in range(part_total)]
+    return {
+        "source_filename": asset["filename"],
+        "source_size_bytes": source_size,
+        "source_sha256": source_sha,
+        "part_total": part_total,
+        "parts_in_order": parts,
+        "reconstruct_windows_cmd": f"copy /b {'+'.join(parts)} {asset['filename']}",
+        "reconstruct_posix": f"cat {' '.join(parts)} > {asset['filename']}",
+    }
 
 
 def run_fetch(
@@ -183,17 +202,9 @@ def run_fetch(
                     output_name = f"{asset['filename']}.part{part_index:02d}of{part_total:02d}"
                     output = out_dir / output_name
                     write_part(source, output, part_index, part_total)
-                    reconstruct = {
-                        "source_filename": asset["filename"],
-                        "source_size_bytes": source_size,
-                        "source_sha256": source_sha,
-                        "part_total": part_total,
-                        "part_pattern": f"{asset['filename']}.partNNof{part_total:02d}",
-                        "reconstruct_windows": f"copy /b {asset['filename']}.part00of{part_total:02d}+... {asset['filename']}",
-                        "reconstruct_posix": f"cat {asset['filename']}.part*of{part_total:02d} > {asset['filename']}",
-                    }
+                    metadata = _reconstruction_metadata(asset, source_size, source_sha, part_total)
                     (out_dir / "reconstruct.json").write_text(
-                        json.dumps(reconstruct, ensure_ascii=False, indent=2), encoding="utf-8"
+                        json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
                     )
                 else:
                     output_name = asset["filename"]
