@@ -1,0 +1,2 @@
+trigger=2026-08-25T15:17+08:00
+purpose=initial-public-pipeline-acceptance
