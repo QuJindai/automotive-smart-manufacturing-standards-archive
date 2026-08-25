@@ -1,0 +1,94 @@
+name: Public standards asset fetch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'manifest/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/standards-download-trigger.txt'
+      - '.github/workflows/fetch-public-assets.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'manifest/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/standards-download-trigger.txt'
+      - '.github/workflows/fetch-public-assets.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-standards-fetch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate manifest and build matrix
+        id: matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix="$(python scripts/prepare_matrix.py --manifest manifest/standards.json)"
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "${matrix}"
+
+  fetch:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download, validate and hash assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf out
+          if [ "${{ matrix.mode }}" = "group" ]; then
+            python scripts/fetch_assets.py \
+              --manifest manifest/standards.json \
+              --out out \
+              --mode group \
+              --group "${{ matrix.group }}"
+          else
+            python scripts/fetch_assets.py \
+              --manifest manifest/standards.json \
+              --out out \
+              --mode split \
+              --asset-id "${{ matrix.asset_id }}" \
+              --part-index "${{ matrix.part_index }}" \
+              --part-total "${{ matrix.part_total }}"
+          fi
+          echo '--- evidence.csv ---'
+          cat out/evidence.csv
+          echo '--- output sizes ---'
+          find out -type f -printf '%s %p\n' | sort -n
+
+      - name: Upload one-day transfer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: standards-${{ matrix.artifact_name }}-${{ github.run_id }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
