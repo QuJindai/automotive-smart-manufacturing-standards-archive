@@ -3,7 +3,20 @@
   "archive_root_logical_path": "/汽车智能制造标准研究_2026/标准原文资产库_2026",
   "privacy_rule": "Do not commit Google Drive file IDs or private Drive URLs.",
   "baseline_date": "2026-08-25",
-  "pipeline_state": "pending_new_repository_acceptance",
+  "pipeline_state": "accepted",
+  "acceptance": {
+    "repository": "QuJindai/automotive-smart-manufacturing-standards-archive",
+    "workflow_run_id": 32821647424,
+    "prepare_job": "success",
+    "fetch_jobs": 6,
+    "fetch_jobs_success": 6,
+    "artifact_count": 6,
+    "largest_artifact_bytes": 95837572,
+    "artifact_retention_days": 1,
+    "connector_download_probe": "PASS",
+    "probe_artifact_group": "open-source-small",
+    "probe_zip_integrity": "PASS"
+  },
   "entries": [
     {
       "artifact_group": "nist-public-fulltext",
