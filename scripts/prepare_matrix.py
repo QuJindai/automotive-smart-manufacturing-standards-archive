@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 MAX_ARTIFACT_BYTES = 95 * 1024 * 1024
 SUPPORTED_KINDS = {"pdf", "zip"}
+RESTRICTED_PUBLIC_ARTIFACT_HOSTS = {"openstd.samr.gov.cn", "std.samr.gov.cn"}
 REQUIRED_FIELDS = {
     "id",
     "title",
@@ -72,6 +73,11 @@ def validate_manifest(manifest: dict) -> list[dict]:
         parsed = urlparse(asset["url"])
         if parsed.scheme != "https" or not parsed.netloc:
             raise ValueError(f"asset {asset_id} must use an https URL")
+        if (parsed.hostname or "").lower() in RESTRICTED_PUBLIC_ARTIFACT_HOSTS:
+            raise ValueError(
+                f"asset {asset_id} uses copyright-restricted SAMR national-standard access host; "
+                "keep the official entry in the China index/private archive path, not a public artifact"
+            )
 
         if asset["kind"] not in SUPPORTED_KINDS:
             raise ValueError(f"asset {asset_id} has unsupported kind: {asset['kind']}")
