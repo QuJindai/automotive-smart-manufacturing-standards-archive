@@ -66,6 +66,12 @@ class PrepareMatrixTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "redistributable"):
             validate_manifest(manifest)
 
+    def test_samr_fulltext_domain_is_rejected_from_public_artifacts(self):
+        manifest = self.base_manifest()
+        manifest["assets"][0]["url"] = "https://openstd.samr.gov.cn/bzgk/std/example.pdf"
+        with self.assertRaisesRegex(ValueError, "copyright-restricted"):
+            validate_manifest(manifest)
+
     def test_oversized_group_is_rejected(self):
         manifest = self.base_manifest()
         manifest["assets"][0]["expected_size_bytes"] = MAX_ARTIFACT_BYTES + 1
