@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/QuJindai/automotive-smart-manufacturing-standards-archive/machine-readable/v1/profile.schema.json",
+  "title": "Automotive Smart Manufacturing Profile Package Schema V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_version",
+    "baseline_date",
+    "source_baseline",
+    "profiles",
+    "parameter_definitions",
+    "parameters",
+    "rules"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "profile_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "baseline_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "source_baseline": {
+      "type": "object",
+      "required": [
+        "engineering_linkage_asset",
+        "open_fulltext_only"
+      ],
+      "properties": {
+        "engineering_linkage_asset": {
+          "type": "string"
+        },
+        "open_fulltext_only": {
+          "const": true
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "source_id",
+              "version",
+              "sha256"
+            ],
+            "properties": {
+              "source_id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "$ref": "#/$defs/profile"
+      }
+    },
+    "parameter_definitions": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/parameter_definition"
+      }
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "name",
+        "scope",
+        "conformity_levels"
+      ],
+      "properties": {
+        "profile_id": {
+          "enum": [
+            "P-AAS",
+            "P-AI"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "conformity_levels": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "C0",
+              "C1",
+              "C2",
+              "C3"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "parameter_definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "required_before_execution"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "required_before_execution": {
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "array",
+            "object"
+          ]
+        },
+        "example": {}
+      }
+    },
+    "source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "locator",
+        "origin_type"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string"
+        },
+        "locator": {
+          "type": "string"
+        },
+        "origin_type": {
+          "enum": [
+            "source_derived",
+            "source_plus_automotive_profile_extension",
+            "engineering_interpretation"
+          ]
+        }
+      }
+    },
+    "machine_check": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "jsonpath_assertion",
+            "custom_assertion",
+            "http_test",
+            "package_test",
+            "evidence_test",
+            "manual_review",
+            "external_test",
+            "integration_test"
+          ]
+        },
+        "test_id": {
+          "type": "string"
+        },
+        "test_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "target": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "expected": {},
+        "evaluator": {
+          "type": "string"
+        },
+        "parameter_ref": {
+          "type": "string"
+        },
+        "threshold_ref": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "path_template": {
+          "type": "string"
+        },
+        "expected_status_parameter": {
+          "type": "string"
+        },
+        "evidence_type": {
+          "type": "string"
+        },
+        "suite": {
+          "type": "string"
+        },
+        "required_output": {
+          "type": "string"
+        },
+        "required_sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "profile_id",
+        "target",
+        "requirement",
+        "mandatory",
+        "source",
+        "automotive_scenario",
+        "evidence_types",
+        "test_ids",
+        "machine_checks"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "pattern": "^PF-(AAS|AI)-[0-9]{3}$"
+        },
+        "profile_id": {
+          "enum": [
+            "P-AAS",
+            "P-AI"
+          ]
+        },
+        "target": {
+          "type": "string"
+        },
+        "carrier_type": {
+          "type": "string"
+        },
+        "mandatory": {
+          "type": "string"
+        },
+        "requirement": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/source_ref"
+        },
+        "automotive_scenario": {
+          "type": "string"
+        },
+        "evidence_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "test_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "machine_checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/machine_check"
+          },
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

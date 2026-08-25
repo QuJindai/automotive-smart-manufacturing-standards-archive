@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "baseline_date": "2026-08-26",
+  "asset": "machine-executable-profile-v1",
+  "profile_rules": 26,
+  "test_cases": 39,
+  "profiles": [
+    "P-AAS",
+    "P-AI"
+  ],
+  "conformity_levels": [
+    "C0",
+    "C1",
+    "C2",
+    "C3"
+  ],
+  "logical_drive_path": "/汽车智能制造标准研究_2026/标准原文资产库_2026/05_Profile与符合性工程/02_机器可执行Profile_V1",
+  "items": [
+    {
+      "file": "profile.schema.json",
+      "sha256": "df887f3c864cfb6777291347cc706abd3f579536c47fd29c428f974c5688a10e",
+      "size_bytes": 6951,
+      "public_git_policy": "commit_text"
+    },
+    {
+      "file": "automotive-manufacturing-profile.v1.json",
+      "sha256": "59122113ad97ca119ccc90c95b46242f1cac8638313913f1b52b5c683f943eb7",
+      "size_bytes": 27544,
+      "public_git_policy": "commit_text"
+    },
+    {
+      "file": "test-cases.yaml",
+      "sha256": "da93df532171ae4b64f010de0f31ef1237bb20bf49e0b20ed08059bb3b4fae0b",
+      "size_bytes": 18987,
+      "public_git_policy": "commit_text"
+    },
+    {
+      "file": "evidence.schema.json",
+      "sha256": "274829ea20de91398a598e8489e60805c9ec78c17edebcc07f929ad5fd457c18",
+      "size_bytes": 6537,
+      "public_git_policy": "commit_text"
+    },
+    {
+      "file": "procurement-FAT-SAT-checklist.xlsx",
+      "sha256": "dd6dda16b7a4c154c50d7fd62492ec0b03b302896fbd0637933644fcdc31c42f",
+      "size_bytes": 44404,
+      "public_git_policy": "drive_only_binary"
+    },
+    {
+      "file": "README.md",
+      "sha256": "e4584118487de8a4c7f8559d2e3dbb8e99ce4b1a6f65b9460974b39eaa2482c0",
+      "size_bytes": 847,
+      "public_git_policy": "commit_text"
+    },
+    {
+      "file": "EVIDENCE.md",
+      "sha256": "8e2109fed35c4caffd8dce8ef5d881077f6532a989cb82a26ec90f8af4692657",
+      "size_bytes": 1216,
+      "public_git_policy": "commit_text"
+    },
+    {
+      "file": "STATUS.json",
+      "sha256": "a230ad70bb6b2578a3ee77c80c5460f1e77ea1f4b8262ddd58c0babfa761780a",
+      "size_bytes": 237,
+      "public_git_policy": "commit_text"
+    },
+    {
+      "file": "CHANGELOG.md",
+      "sha256": "741f0b073b3a2de9759f94d585e58466f356e0ddf21644ed33154b1a610df923",
+      "size_bytes": 512,
+      "public_git_policy": "commit_text"
+    }
+  ],
+  "privacy_rule": "No private Google Drive IDs or private URLs in public GitHub."
+}
