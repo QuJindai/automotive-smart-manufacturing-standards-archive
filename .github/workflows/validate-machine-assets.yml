@@ -1,0 +1,46 @@
+name: Validate machine-readable profile metadata
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'machine-readable/**'
+      - '.github/workflows/validate-machine-assets.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'machine-readable/**'
+      - '.github/workflows/validate-machine-assets.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JSON metadata and invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, re
+          root = pathlib.Path('machine-readable/v1')
+          profile_schema = json.loads((root/'profile.schema.json').read_text(encoding='utf-8'))
+          evidence_schema = json.loads((root/'evidence.schema.json').read_text(encoding='utf-8'))
+          index = json.loads((root/'index.json').read_text(encoding='utf-8'))
+          assert profile_schema['$schema'] == 'https://json-schema.org/draft/2020-12/schema'
+          assert evidence_schema['$schema'] == 'https://json-schema.org/draft/2020-12/schema'
+          assert index['profile_rules'] == 26
+          assert index['test_cases'] == 39
+          assert index['profiles'] == ['P-AAS', 'P-AI']
+          assert index['conformity_levels'] == ['C0', 'C1', 'C2', 'C3']
+          assert 'drive.google.com' not in json.dumps(index, ensure_ascii=False)
+          for item in index['items']:
+              assert re.fullmatch(r'[a-f0-9]{64}', item['sha256'])
+              assert item['size_bytes'] > 0
+          print('MACHINE_METADATA_VALIDATION=PASS')
+          print('PROFILE_RULES=26 TEST_CASES=39')
+          PY
