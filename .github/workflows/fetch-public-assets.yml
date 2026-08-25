@@ -6,16 +6,6 @@ on:
     branches: [main]
     paths:
       - 'manifest/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - '.github/standards-download-trigger.txt'
-      - '.github/workflows/fetch-public-assets.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'manifest/**'
-      - 'scripts/**'
-      - 'tests/**'
       - '.github/standards-download-trigger.txt'
       - '.github/workflows/fetch-public-assets.yml'
 
@@ -85,10 +75,11 @@ jobs:
           find out -type f -printf '%s %p\n' | sort -n
 
       - name: Upload one-day transfer artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: standards-${{ matrix.artifact_name }}-${{ github.run_id }}
           path: out/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 1
           compression-level: 6
