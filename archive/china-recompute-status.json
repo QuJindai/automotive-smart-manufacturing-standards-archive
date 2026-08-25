@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "baseline_date": "2026-08-25",
+  "state": "FROZEN_AND_ARCHIVED",
+  "china_materialized_nodes": 211,
+  "china_adoption_relations": 32,
+  "global_materialized_r02_r08_nodes": 1167,
+  "materialized_relations": 494,
+  "matrix_assets": [
+    "R09 MASTER REGISTRY V2 — China 211-node baseline",
+    "R10 TOPIC MATRIX V2 — 1167-node baseline",
+    "R11 AUTOMOTIVE MATRIX V2 — 1167-node baseline"
+  ],
+  "long_term_archive": "private asset archive maintained separately",
+  "private_archive_identifiers_committed": false,
+  "standard_fulltext_committed": false,
+  "next_gate": "Update the preserved 158-page master report as V1.3 without condensing it."
+}
