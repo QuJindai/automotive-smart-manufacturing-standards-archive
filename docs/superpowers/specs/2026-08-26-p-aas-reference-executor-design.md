@@ -45,6 +45,7 @@ machine-readable/v1/
 
 reference-implementation/p-aas-v1/
   README.md
+  run_reference.py
   paas_ref/
     __init__.py
     __main__.py
@@ -170,11 +171,11 @@ The values are synthetic examples, not assertions about any real factory.
 - Evidence files contain only synthetic/reference data unless a user deliberately runs against an external target.
 
 ## Verification
-CI must run:
+CI must run from repository root:
 
 ```bash
 python -m unittest discover -s reference-implementation/p-aas-v1/tests -v
-python -m reference-implementation/p-aas-v1/paas_ref --help  # represented by the package invocation documented in README
+python reference-implementation/p-aas-v1/run_reference.py --help
 python reference-implementation/p-aas-v1/run_reference.py --out /tmp/paas-evidence
 ```
 
