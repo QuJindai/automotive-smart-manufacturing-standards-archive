@@ -1,4 +1,4 @@
-name: GNSS Official Recovery Alternate Egress
+name: GNSS R155 UN Documents Recovery
 
 on:
   push:
@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 jobs:
-  alternate-egress:
+  un-documents:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
-      - name: Fetch official originals through temporary authenticated egress
+      - name: Fetch R155 official UN Documents PDFs
         shell: bash
         env:
           PROXY_BASE: https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/gnss-official-recovery-proxy
@@ -23,16 +23,14 @@ jobs:
           set -u
           mkdir -p out
           printf 'filename\ttarget\tstatus\thttp_code\tmime\tbytes\n' > out/FETCH_LOG.tsv
-
           fetch_proxy() {
             filename="$1"; target="$2"
-            tmp="out/.${filename}.part"; dst="out/$filename"; hdr="out/.${filename}.headers"
-            rm -f "$tmp" "$dst" "$hdr"
-            code=$(curl -L --connect-timeout 15 --max-time 180 \
+            tmp="out/.${filename}.part"; dst="out/$filename"
+            rm -f "$tmp" "$dst"
+            code=$(curl -L --connect-timeout 15 --max-time 120 \
               -H "Authorization: Bearer $SUPABASE_ANON" \
               -H "apikey: $SUPABASE_ANON" \
-              -D "$hdr" -o "$tmp" -w '%{http_code}' \
-              "$PROXY_BASE?id=$target" 2>/dev/null || true)
+              -o "$tmp" -w '%{http_code}' "$PROXY_BASE?id=$target" 2>/dev/null || true)
             mime=$(file -b --mime-type "$tmp" 2>/dev/null || true)
             bytes=$(stat -c '%s' "$tmp" 2>/dev/null || echo 0)
             magic=$(head -c 5 "$tmp" 2>/dev/null || true)
@@ -44,25 +42,18 @@ jobs:
               rm -f "$tmp"
             fi
           }
-
-          fetch_proxy UN_R155_Amendment2_2024.pdf r155a2
-          fetch_proxy UN_R155_Amendment3_2025.pdf r155a3
+          fetch_proxy UN_R155_Amendment2_2024.pdf r155doc2
+          fetch_proxy UN_R155_Amendment3_2025.pdf r155doc3
           fetch_proxy UN_R155_LegalText_Supplement2_ECE_TRANS_WP29_2023_70.pdf r155legal2
           fetch_proxy UN_R155_LegalText_Supplement3_ECE_TRANS_WP29_2024_55.pdf r155legal3
-          fetch_proxy UN_R155_Amendment2_Depositary_CN37_2024.pdf r155cn2
-          fetch_proxy UN_R155_Amendment3_Depositary_CN63_2025.pdf r155cn3
-          fetch_proxy US_DOT_PNT_Strategic_Plan_2025.pdf dot
-
           find out -maxdepth 1 -name '*.pdf' -type f -print0 | sort -z | xargs -0 -r sha256sum > out/SHA256SUMS.txt
-          echo '===== ALTERNATE EGRESS LOG ====='
           cat out/FETCH_LOG.tsv
-          echo '===== SHA256 ====='
           cat out/SHA256SUMS.txt
 
-      - name: Upload alternate-egress artifact
+      - name: Upload UN Documents recovery artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GNSS_RECOVERY_alternate_egress
+          name: GNSS_RECOVERY_UN_DOCUMENTS
           path: |
             out/*.pdf
             out/FETCH_LOG.tsv
