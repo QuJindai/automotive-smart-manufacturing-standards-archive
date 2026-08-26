@@ -1,0 +1,131 @@
+name: Download Executor
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.download/jobs/**'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: download-executor-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve descriptor
+        id: descriptor
+        shell: bash
+        run: |
+          set -euo pipefail
+          path=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep '^\.download/jobs/.*\.json$' | head -n 1)
+          test -n "$path"
+          id=$(python - "$path" <<'PY'
+          import json, sys
+          from scripts.download_executor import validate_descriptor
+          obj=json.load(open(sys.argv[1],encoding='utf-8'))
+          print(validate_descriptor(obj))
+          PY
+          )
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+          echo "download_id=$id" >> "$GITHUB_OUTPUT"
+          echo "DOWNLOAD_ID=$id"
+
+      - name: Request GitHub OIDC identity
+        id: oidc
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=download-mcp")
+          token=$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$raw")
+          test -n "$token"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch secret job payload
+        shell: bash
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+          DOWNLOAD_ID: ${{ steps.descriptor.outputs.download_id }}
+        run: |
+          set -euo pipefail
+          curl -fsS \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging/executor/job/$DOWNLOAD_ID" \
+            -o job.json
+          python - <<'PY'
+          import json
+          j=json.load(open('job.json'))
+          assert j.get('download_id')
+          assert isinstance(j.get('assets'),list) and j['assets']
+          print('EXECUTOR_JOB_FETCH=PASS',j['download_id'],len(j['assets']))
+          PY
+
+      - name: Execute download
+        id: execute
+        shell: bash
+        run: |
+          set +e
+          rm -rf out result.json
+          mkdir -p out
+          python scripts/download_executor.py --job job.json --out out --result result.json
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          test -f result.json
+          exit 0
+
+      - name: Upload small-file transfer artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: download-${{ steps.descriptor.outputs.download_id }}-${{ github.run_id }}
+          path: |
+            out/
+            result.json
+          if-no-files-found: warn
+          retention-days: 1
+          compression-level: 0
+
+      - name: Submit normalized result
+        shell: bash
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+          DOWNLOAD_ID: ${{ steps.descriptor.outputs.download_id }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          EXECUTOR_EXIT: ${{ steps.execute.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          p='result.json'
+          data=json.load(open(p))
+          data['artifact']={
+            'artifact_id': os.environ.get('ARTIFACT_ID',''),
+            'artifact_url': os.environ.get('ARTIFACT_URL',''),
+            'run_id': os.environ.get('GITHUB_RUN_ID',''),
+          }
+          data['executor_exit_code']=int(os.environ.get('EXECUTOR_EXIT','0'))
+          open('result-submit.json','w').write(json.dumps(data,separators=(',',':')))
+          PY
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data-binary @result-submit.json \
+            "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging/executor/result/$DOWNLOAD_ID" \
+            > control-result.json
+          python - <<'PY'
+          import json
+          r=json.load(open('control-result.json'))
+          assert r.get('download_id')
+          print('EXECUTOR_RESULT_SUBMIT=PASS',r['download_id'],r.get('status'))
+          PY
