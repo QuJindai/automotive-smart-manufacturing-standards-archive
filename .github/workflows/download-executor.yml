@@ -72,6 +72,54 @@ jobs:
           print('EXECUTOR_JOB_FETCH=PASS',j['download_id'],len(j['assets']))
           PY
 
+      - name: Acquire large-file Drive sessions
+        id: drive
+        shell: bash
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+          DOWNLOAD_ID: ${{ steps.descriptor.outputs.download_id }}
+        run: |
+          set -euo pipefail
+          BASE='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive-staging'
+          code=$(curl -sS -o drive-sessions.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            "$BASE/executor/sessions/$DOWNLOAD_ID")
+          if [ "$code" = '200' ]; then
+            python - <<'PY'
+          import json
+          response=json.load(open('drive-sessions.json'))
+          sessions=response.get('upload_sessions') or {}
+          assert isinstance(sessions,dict)
+          job=json.load(open('job.json'))
+          job['upload_sessions']=sessions
+          json.dump(job,open('job.json','w'),ensure_ascii=False,separators=(',',':'))
+          open('mask-sessions.txt','w').write('\n'.join(str(x) for x in sessions.values() if x))
+          print('DRIVE_SESSION_STATUS=READY',len(sessions))
+          PY
+            while IFS= read -r session; do
+              [ -z "$session" ] || echo "::add-mask::$session"
+            done < mask-sessions.txt
+            rm -f mask-sessions.txt drive-sessions.json
+            echo 'status=ready' >> "$GITHUB_OUTPUT"
+          elif [ "$code" = '409' ]; then
+            python - <<'PY'
+          import json
+          response=json.load(open('drive-sessions.json'))
+          assert response.get('code')=='AUTH_REQUIRED', response
+          assert response.get('scope')=='https://www.googleapis.com/auth/drive.file', response
+          text=json.dumps(response).lower()
+          for secret in ('refresh_token','access_token','client_secret','ciphertext','session_url','upload_sessions'):
+              assert secret not in text, secret
+          print('DRIVE_SESSION_STATUS=AUTH_REQUIRED')
+          PY
+            rm -f drive-sessions.json
+            echo 'status=auth_required' >> "$GITHUB_OUTPUT"
+          else
+            echo "DRIVE_SESSION_STATUS=ERROR_HTTP_$code"
+            rm -f drive-sessions.json
+            exit 1
+          fi
+
       - name: Preflight large-file Drive routing
         id: large
         shell: bash
