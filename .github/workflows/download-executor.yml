@@ -186,7 +186,7 @@ jobs:
           EXECUTOR_EXIT: ${{ steps.execute.outputs.exit_code }}
         run: |
           set -euo pipefail
-          python - <<'PY'
+          endpoint=$(python - <<'PY'
           import json, os
           data=json.load(open('result.json'))
           data['artifact']={
@@ -196,12 +196,15 @@ jobs:
           }
           data['executor_exit_code']=int(os.environ.get('EXECUTOR_EXIT','0'))
           open('result-submit.json','w').write(json.dumps(data,separators=(',',':')))
+          print('download-mcp-large-result' if data.get('auth_required') is True else 'download-mcp-staging')
           PY
+          )
+          echo "CONTROL_RESULT_ENDPOINT=$endpoint"
           curl -fsS -X POST \
             -H "Authorization: Bearer $OIDC_TOKEN" \
             -H 'Content-Type: application/json' \
             --data-binary @result-submit.json \
-            "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging/executor/result/$DOWNLOAD_ID" \
+            "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/$endpoint/executor/result/$DOWNLOAD_ID" \
             > control-result.json
           python - <<'PY'
           import json
