@@ -72,6 +72,31 @@ jobs:
           print('EXECUTOR_JOB_FETCH=PASS',j['download_id'],len(j['assets']))
           PY
 
+      - name: Detect browser fallback requirement
+        id: browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=$(python - <<'PY'
+          import json
+          from scripts.download_executor import fallback_methods
+          j=json.load(open('job.json'))
+          print('true' if any('browser' in fallback_methods(a) for a in j.get('assets',[]) if isinstance(a,dict)) else 'false')
+          PY
+          )
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          echo "BROWSER_REQUIRED=$required"
+
+      - name: Install browser runtime
+        if: steps.browser.outputs.required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null 2>&1
+          echo 'PLAYWRIGHT_BROWSER=READY'
+
       - name: Execute download
         id: execute
         shell: bash
@@ -109,8 +134,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json, os
-          p='result.json'
-          data=json.load(open(p))
+          data=json.load(open('result.json'))
           data['artifact']={
             'artifact_id': os.environ.get('ARTIFACT_ID',''),
             'artifact_url': os.environ.get('ARTIFACT_URL',''),
