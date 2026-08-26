@@ -150,15 +150,22 @@ def expected_magic(kind: str | None) -> str | None:
     return None
 
 
+def validate_magic_prefix(prefix: bytes, kind: str | None) -> None:
+    wanted = expected_magic(kind)
+    if not wanted:
+        return
+    actual = detect_magic(prefix[:64])
+    if actual != wanted:
+        raise ValueError(f"magic mismatch: expected {wanted}, got {actual}")
+
+
 def validate_file(path: Path, kind: str | None, expected_size: int | None, expected_sha: str | None) -> tuple[int, str]:
     size = path.stat().st_size
     if expected_size and size != expected_size:
         raise ValueError(f"size mismatch: {size} != {expected_size}")
     with path.open("rb") as handle:
-        magic = detect_magic(handle.read(64))
-    wanted = expected_magic(kind)
-    if wanted and magic != wanted:
-        raise ValueError(f"magic mismatch: expected {wanted}, got {magic}")
+        prefix = handle.read(64)
+    validate_magic_prefix(prefix, kind)
     digest = sha256_file(path)
     if expected_sha and digest.lower() != expected_sha.lower():
         raise ValueError("SHA256 mismatch")
@@ -305,6 +312,13 @@ def _put_drive_chunk(session_url: str, chunk: bytes, start: int, total: int) -> 
         return next_offset, None
 
 
+def _source_prefix(url: str) -> bytes:
+    with _request(url, headers={"Range": "bytes=0-63"}, timeout=60) as response:
+        if response.status not in {200, 206}:
+            raise RuntimeError(f"source prefix status {response.status}")
+        return response.read(64)
+
+
 def upload_direct_resumable(asset: dict, session_url: str, chunk_size: int = DEFAULT_CHUNK) -> AssetResult:
     """Stream a source into Drive using the supplied one-file resumable session."""
     asset_id = str(asset.get("asset_id") or "")
@@ -318,12 +332,14 @@ def upload_direct_resumable(asset: dict, session_url: str, chunk_size: int = DEF
     try:
         offset = query_drive_offset(session_url, total)
         if offset >= total:
+            validate_magic_prefix(_source_prefix(url), asset.get("kind"))
             return AssetResult(asset_id, filename, "PASS", total, asset.get("expected_sha256"), "drive-resumable-resume", drive_ref={"size": total})
         headers = {"Range": f"bytes={offset}-"} if offset else {}
         with _request(url, headers=headers, timeout=300) as source:
             if offset and source.status != 206:
                 raise RuntimeError("source ignored Range during resume")
             digest = hashlib.sha256()
+            prefix_checked = False
             if offset:
                 with _request(url, headers={"Range": f"bytes=0-{offset-1}"}, timeout=300) as prefix_source:
                     if prefix_source.status != 206:
@@ -332,6 +348,9 @@ def upload_direct_resumable(asset: dict, session_url: str, chunk_size: int = DEF
                         block = prefix_source.read(DEFAULT_CHUNK)
                         if not block:
                             break
+                        if not prefix_checked:
+                            validate_magic_prefix(block, asset.get("kind"))
+                            prefix_checked = True
                         digest.update(block)
             position = offset
             final_drive = None
@@ -345,6 +364,9 @@ def upload_direct_resumable(asset: dict, session_url: str, chunk_size: int = DEF
                     if not more:
                         raise IOError("unexpected source EOF")
                     buf += more
+                if not prefix_checked:
+                    validate_magic_prefix(buf, asset.get("kind"))
+                    prefix_checked = True
                 digest.update(buf)
                 next_position, drive_data = _put_drive_chunk(session_url, buf, position, total)
                 if next_position < position + len(buf):
