@@ -13,12 +13,53 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136 Sa
 KEYWORDS = re.compile(r"(?i)(download|pdf|preview|view|attach|file|标准全文|下载标准|hcno|stdFile)")
 URL_RE = re.compile(r"(?P<url>(?:https?:)?//[^\"'<>\\\s]+|/[A-Za-z0-9_./?=&%+:-]+)")
 SCRIPT_RE = re.compile(r'<script[^>]+src=["\']([^"\']+)["\']', re.I)
+HCNO_RE = re.compile(r'data-value=["\']([A-Fa-f0-9]{32})["\']')
 
 
 def fetch(session: requests.Session, url: str) -> requests.Response:
     r = session.get(url, timeout=30, allow_redirects=True)
     r.raise_for_status()
     return r
+
+
+def response_metadata(r: requests.Response) -> dict:
+    return {
+        'status_code': r.status_code,
+        'url': r.url,
+        'content_type': r.headers.get('content-type', ''),
+        'content_disposition': r.headers.get('content-disposition', ''),
+        'content_length': r.headers.get('content-length', ''),
+        'location': r.headers.get('location', ''),
+    }
+
+
+def probe_download_metadata(session: requests.Session, hcno: str, referer: str) -> dict:
+    """Probe headers/redirects only. Never persist or upload standard text in public CI."""
+    base = 'https://openstd.samr.gov.cn'
+    endpoint = f'{base}/bzgk/std/showGb?type=download&hcno={hcno}&request_locale=zh_CN'
+    headers = {'Referer': referer, 'Accept': 'application/pdf,text/html,application/octet-stream;q=0.9,*/*;q=0.8'}
+    result = {'hcno': hcno, 'endpoint': endpoint}
+
+    # First request without following redirects, streamed so the body is not downloaded.
+    r0 = session.get(endpoint, headers=headers, timeout=30, allow_redirects=False, stream=True)
+    result['initial'] = response_metadata(r0)
+    location = r0.headers.get('location')
+    r0.close()
+
+    # Then follow the official redirect chain, still streamed; inspect only final headers.
+    try:
+        r1 = session.get(endpoint, headers=headers, timeout=30, allow_redirects=True, stream=True)
+        result['final'] = response_metadata(r1)
+        result['redirect_chain'] = [response_metadata(x) for x in r1.history]
+        result['is_pdf_by_header'] = 'pdf' in r1.headers.get('content-type', '').lower()
+        result['is_attachment'] = 'attachment' in r1.headers.get('content-disposition', '').lower()
+        r1.close()
+    except Exception as exc:
+        result['follow_error'] = str(exc)
+
+    if location:
+        result['resolved_location'] = urljoin(endpoint, location)
+    return result
 
 
 def scan_text(text: str, base_url: str) -> list[dict]:
@@ -58,19 +99,23 @@ def probe_one(session: requests.Session, target: dict, out_dir: Path) -> dict:
         result['http_status'] = r.status_code
         result['content_type'] = r.headers.get('content-type', '')
         html = r.text
-        (item_dir / 'detail.html').write_text(html, encoding='utf-8', errors='replace')
         result['html_hits'] = scan_text(html, r.url)
 
+        hcnos = HCNO_RE.findall(html)
+        hcno = target.get('hcno') or (hcnos[0] if hcnos else '')
+        result['hcno'] = hcno
+        if hcno:
+            result['download_probe'] = probe_download_metadata(session, hcno, r.url)
+
+        # Only inspect first-party script text in memory. Do not persist page/script bodies in artifact.
         scripts = [urljoin(r.url, x) for x in SCRIPT_RE.findall(html)]
         scripts = list(dict.fromkeys(scripts))[:40]
-        for idx, script_url in enumerate(scripts):
+        for script_url in scripts:
             try:
                 sr = fetch(session, script_url)
-                text = sr.text
-                hits = scan_text(text, sr.url)
+                hits = scan_text(sr.text, sr.url)
                 if hits:
-                    result['script_hits'].append({'url': sr.url, 'hits': hits})
-                    (item_dir / f'script_{idx:02d}.js').write_text(text, encoding='utf-8', errors='replace')
+                    result['script_hits'].append({'url': sr.url, 'hits': hits[:20]})
             except Exception as exc:
                 result['script_hits'].append({'url': script_url, 'error': str(exc)})
 
@@ -80,7 +125,6 @@ def probe_one(session: requests.Session, target: dict, out_dir: Path) -> dict:
         for block in result['script_hits']:
             for hit in block.get('hits', []):
                 candidate_urls.extend(hit.get('urls', []))
-        # Keep SAMR-origin candidates and likely files/endpoints.
         for u in dict.fromkeys(candidate_urls):
             host = urlparse(u).netloc.lower()
             if host.endswith('samr.gov.cn') or host.endswith('sac.gov.cn'):
