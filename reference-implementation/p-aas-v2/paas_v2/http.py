@@ -46,9 +46,10 @@ def request(method: str, url: str, body: bytes | dict | None = None, headers: di
         resp_headers = {k: v for k, v in exc.headers.items()} if exc.headers else {}
     except (URLError, TimeoutError, OSError) as exc:
         raise TransportBlocked(f"{method} {url}: {exc}") from exc
-    text = raw.decode("utf-8", errors="replace")[:16384]
+    full_text = raw.decode("utf-8", errors="replace")
     try:
-        obj = json.loads(text) if text else None
+        obj = json.loads(full_text) if full_text else None
     except json.JSONDecodeError:
         obj = None
-    return HttpEvidence(method.upper(), url, int(status), text, obj, resp_headers)
+    body_text = full_text[:16384]
+    return HttpEvidence(method.upper(), url, int(status), body_text, obj, resp_headers)

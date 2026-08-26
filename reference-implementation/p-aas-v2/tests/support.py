@@ -31,6 +31,8 @@ class FakeBaSyx:
                 self.send_header('Content-Length',str(len(data)))
                 self.end_headers(); self.wfile.write(data)
             def do_GET(self):
+                if self.path == '/large-json':
+                    return self._json(200, {'payload':'x'*20000, 'tail':'parsed'})
                 if self.path == '/v3/api-docs':
                     return self._json(200, {'openapi':'3.0.1','paths':{
                         '/shells': {'post':{}},
