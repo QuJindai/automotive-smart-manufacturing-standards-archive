@@ -1,0 +1,36 @@
+name: Download Drive Staging Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/download-drive-staging-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  drive-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Assert Drive staging public contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive-staging'
+          curl -fsS "$BASE/oauth/status" -o status.json
+          python - <<'PY'
+          import json
+          s=json.load(open('status.json'))
+          assert s['service']=='download-drive-staging'
+          assert s['scope']=='https://www.googleapis.com/auth/drive.file'
+          assert isinstance(s['authorized'],bool)
+          assert s['redirect_strategy']=='reuse-notebook-callback'
+          assert 'refresh_token' not in json.dumps(s).lower()
+          assert 'session_url' not in json.dumps(s).lower()
+          print('DOWNLOAD_DRIVE_STATUS_CONTRACT=PASS',s['authorized'])
+          PY
+          code=$(curl -sS -o unauth.json -w '%{http_code}' -X POST "$BASE/executor/sessions/download-largefixture")
+          test "$code" = '401'
+          echo 'DOWNLOAD_DRIVE_EXECUTOR_AUTH_GUARD=PASS'
