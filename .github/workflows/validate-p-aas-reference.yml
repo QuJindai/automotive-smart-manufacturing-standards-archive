@@ -1,0 +1,87 @@
+name: Validate P-AAS reference executor
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-aas-v1/**'
+      - 'machine-readable/v1/**'
+      - '.github/workflows/validate-p-aas-reference.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-aas-v1/**'
+      - 'machine-readable/v1/**'
+      - '.github/workflows/validate-p-aas-reference.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Repository hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          bad_binary="$(find reference-implementation/p-aas-v1 -type f \( -name '*.pdf' -o -name '*.aasx' \) -print)"
+          if [ -n "$bad_binary" ]; then
+            echo "Committed generated/restricted binary found:"
+            echo "$bad_binary"
+            exit 1
+          fi
+          if grep -RIl 'https://drive.google.com' reference-implementation/p-aas-v1; then
+            echo 'Private/public Drive URL must not be committed in reference implementation.'
+            exit 1
+          fi
+          if grep -RIlE -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|sk-[A-Za-z0-9]{20,}' reference-implementation/p-aas-v1; then
+            echo 'Possible real secret/private key found.'
+            exit 1
+          fi
+          echo 'P_AAS_REPO_HYGIENE=PASS'
+
+      - name: Run unit and integration tests
+        run: python -m unittest discover -s reference-implementation/p-aas-v1/tests -v
+
+      - name: Execute embedded P-AAS reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/p-aas-reference
+          python reference-implementation/p-aas-v1/run_reference.py --out /tmp/p-aas-reference | tee /tmp/p-aas-reference.log
+          grep -q 'AAS_PASS=19 AAS_FAIL=0 AAS_BLOCKED=0' /tmp/p-aas-reference.log
+          python - <<'PY'
+          import hashlib, json, pathlib, zipfile
+          out=pathlib.Path('/tmp/p-aas-reference')
+          bundle=json.loads((out/'evidence-bundle.json').read_text(encoding='utf-8'))
+          summary=json.loads((out/'test-summary.json').read_text(encoding='utf-8'))
+          assert len(bundle['test_results']) == 19
+          assert [x['test_id'] for x in bundle['test_results']] == [f'AAS-T{i:03d}' for i in range(1,20)]
+          assert all(x['result'] == 'PASS' for x in bundle['test_results'])
+          assert summary['counts'] == {'PASS':19,'FAIL':0,'BLOCKED':0,'NOT_APPLICABLE':0}
+          aasx=out/'sample.aasx'
+          assert aasx.exists() and aasx.read_bytes()[:2] == b'PK'
+          with zipfile.ZipFile(aasx) as z:
+              assert 'aasx/aasx-origin' in z.namelist()
+              assert 'aasx/aas-environment.json' in z.namelist()
+          for result in bundle['test_results']:
+              for artifact in result['artifacts']:
+                  p=out/artifact['uri']
+                  assert p.exists()
+                  assert hashlib.sha256(p.read_bytes()).hexdigest() == artifact['sha256']
+          assert 'drive.google.com' not in json.dumps(bundle, ensure_ascii=False)
+          print('P_AAS_REFERENCE_VALIDATION=PASS')
+          PY
+
+      - name: Upload one-day reference evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: p-aas-reference-${{ github.run_id }}
+          path: /tmp/p-aas-reference/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6

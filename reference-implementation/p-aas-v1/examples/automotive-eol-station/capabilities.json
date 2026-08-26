@@ -1,0 +1,10 @@
+{
+  "capabilities": [
+    "read_aas",
+    "read_submodel",
+    "query",
+    "authorization",
+    "signed",
+    "aasx_delivery"
+  ]
+}

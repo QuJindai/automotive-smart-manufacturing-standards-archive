@@ -1,0 +1,7 @@
+{
+  "units": {
+    "urn:example:unit:volt": {"unit": "V", "symbol": "V", "definition": "volt"},
+    "urn:example:unit:second": {"unit": "s", "symbol": "s", "definition": "second"},
+    "urn:example:unit:dimensionless": {"unit": "1", "symbol": "1", "definition": "dimensionless"}
+  }
+}

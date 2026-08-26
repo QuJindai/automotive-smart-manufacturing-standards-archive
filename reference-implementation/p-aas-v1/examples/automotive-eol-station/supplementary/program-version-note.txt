@@ -1,0 +1,1 @@
+Synthetic program version note: EOL_REFERENCE 1.0.0.

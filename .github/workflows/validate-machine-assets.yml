@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - 'machine-readable/**'
+      - 'reference-implementation/p-aas-v1/profile/**'
       - '.github/workflows/validate-machine-assets.yml'
   push:
     branches: [main]
     paths:
       - 'machine-readable/**'
+      - 'reference-implementation/p-aas-v1/profile/**'
       - '.github/workflows/validate-machine-assets.yml'
 
 permissions:
@@ -28,19 +30,32 @@ jobs:
           python - <<'PY'
           import json, pathlib, re
           root = pathlib.Path('machine-readable/v1')
+          paas = pathlib.Path('reference-implementation/p-aas-v1/profile')
           profile_schema = json.loads((root/'profile.schema.json').read_text(encoding='utf-8'))
           evidence_schema = json.loads((root/'evidence.schema.json').read_text(encoding='utf-8'))
           index = json.loads((root/'index.json').read_text(encoding='utf-8'))
+          paas_profile = json.loads((paas/'p-aas-profile.v1.json').read_text(encoding='utf-8'))
+          paas_tests = json.loads((paas/'p-aas-test-cases.v1.json').read_text(encoding='utf-8'))
           assert profile_schema['$schema'] == 'https://json-schema.org/draft/2020-12/schema'
           assert evidence_schema['$schema'] == 'https://json-schema.org/draft/2020-12/schema'
           assert index['profile_rules'] == 26
           assert index['test_cases'] == 39
           assert index['profiles'] == ['P-AAS', 'P-AI']
           assert index['conformity_levels'] == ['C0', 'C1', 'C2', 'C3']
+          assert paas_profile['profile_id'] == 'P-AAS'
+          assert len(paas_profile['rules']) == 14
+          assert len(paas_tests['cases']) == 19
+          assert [x['id'] for x in paas_tests['cases']] == [f'AAS-T{i:03d}' for i in range(1, 20)]
+          known = {x['id'] for x in paas_tests['cases']}
+          for rule in paas_profile['rules']:
+              assert rule['test_ids']
+              assert set(rule['test_ids']).issubset(known)
           assert 'drive.google.com' not in json.dumps(index, ensure_ascii=False)
+          assert 'drive.google.com' not in json.dumps(paas_profile, ensure_ascii=False)
+          assert 'drive.google.com' not in json.dumps(paas_tests, ensure_ascii=False)
           for item in index['items']:
               assert re.fullmatch(r'[a-f0-9]{64}', item['sha256'])
               assert item['size_bytes'] > 0
           print('MACHINE_METADATA_VALIDATION=PASS')
-          print('PROFILE_RULES=26 TEST_CASES=39')
+          print('GLOBAL_PROFILE_RULES=26 GLOBAL_TEST_CASES=39 P_AAS_RULES=14 P_AAS_TESTS=19')
           PY

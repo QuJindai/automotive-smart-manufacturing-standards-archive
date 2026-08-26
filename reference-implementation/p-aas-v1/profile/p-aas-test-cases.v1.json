@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "profile_id": "P-AAS",
+  "profile_version": "2026.08-v1",
+  "cases": [
+    {"id":"AAS-T001","title":"AAS规范性规则解析","levels":["C0","C1"],"source":{"source_id":"IDTA-01001-3.1.2","locator":"Conformance p.3"},"runner":"profile_traceability","expected":"每条P-AAS规则均包含来源、机器检查和有效TestID","linked_rule_ids":[]},
+    {"id":"AAS-T002","title":"资产类型/实例","levels":["C1"],"source":{"source_id":"IDTA-01001-3.1.2","locator":"p.16-17"},"runner":"json_rule","expected":"assetKind为Type或Instance且样例为Instance","linked_rule_ids":["PF-AAS-002"]},
+    {"id":"AAS-T003","title":"资产标识完整性","levels":["C1","C2"],"source":{"source_id":"IDTA-01001-3.1.2","locator":"p.110"},"runner":"json_rule","expected":"至少存在globalAssetId或specificAssetIds","linked_rule_ids":["PF-AAS-001"]},
+    {"id":"AAS-T004","title":"语义绑定","levels":["C1"],"source":{"source_id":"IDTA-01001-3.1.2","locator":"ConceptDescription"},"runner":"semantic_rule","expected":"关键Submodel和元素具备semanticId映射","linked_rule_ids":["PF-AAS-003"]},
+    {"id":"AAS-T005","title":"IEC61360数据规范","levels":["C1"],"source":{"source_id":"IDTA-01003-a-3.1.1","locator":"p.14"},"runner":"semantic_rule","expected":"关键ConceptDescription包含IEC61360式数据规范元数据","linked_rule_ids":["PF-AAS-004"]},
+    {"id":"AAS-T006","title":"preferredName语言","levels":["C1"],"source":{"source_id":"IDTA-01003-a-3.1.1","locator":"AASc-3a-002 p.18"},"runner":"semantic_rule","expected":"关键概念至少包含英文；样例同时包含中文","linked_rule_ids":["PF-AAS-005"]},
+    {"id":"AAS-T007","title":"单位一致性","levels":["C1","C2"],"source":{"source_id":"IDTA-01003-a-3.1.1","locator":"p.19"},"runner":"semantic_rule","expected":"unit与unitId解析一致","linked_rule_ids":["PF-AAS-006"]},
+    {"id":"AAS-T008","title":"单位ConceptDescription","levels":["C1"],"source":{"source_id":"IDTA-01003-b-3.0","locator":"p.12-13"},"runner":"semantic_rule","expected":"unitId可在单位字典中解析","linked_rule_ids":["PF-AAS-007"]},
+    {"id":"AAS-T009","title":"接口能力清单","levels":["C0","C1"],"source":{"source_id":"IDTA-01002-3.2","locator":"p.10"},"runner":"capability_rule","expected":"read_aas/read_submodel/query/authorization/signed/aasx_delivery能力声明完整","linked_rule_ids":[]},
+    {"id":"AAS-T010","title":"Query语言","levels":["C1"],"source":{"source_id":"IDTA-01002-3.2","locator":"p.17,p.305-306"},"runner":"http_api","expected":"合法查询返回正确选择，非法请求返回400","linked_rule_ids":["PF-AAS-010"]},
+    {"id":"AAS-T011","title":"GetAASById","levels":["C1","C2"],"source":{"source_id":"IDTA-01002-3.2","locator":"p.110-117"},"runner":"http_api","expected":"已知AAS ID返回200和目标AAS","linked_rule_ids":["PF-AAS-008"]},
+    {"id":"AAS-T012","title":"GetSubmodelById","levels":["C1","C2"],"source":{"source_id":"IDTA-01002-3.2","locator":"p.117-123"},"runner":"http_api","expected":"已知Submodel ID返回200和目标Submodel","linked_rule_ids":["PF-AAS-009"]},
+    {"id":"AAS-T013","title":"无凭据访问","levels":["C1"],"source":{"source_id":"IDTA-01002-3.2","locator":"HTTP.auth.001 p.306"},"runner":"http_api","expected":"受保护资源无凭据返回401","linked_rule_ids":[]},
+    {"id":"AAS-T014","title":"授权拒绝","levels":["C1"],"source":{"source_id":"IDTA-01002-3.2","locator":"HTTP.auth.002 p.306"},"runner":"http_api","expected":"已认证但无权限返回403且不泄露payload","linked_rule_ids":[]},
+    {"id":"AAS-T015","title":"PUT CREATE/UPDATE权利","levels":["C1"],"source":{"source_id":"IDTA-01002-3.2","locator":"HTTP.put.001/002 p.306"},"runner":"http_api","expected":"create-token创建返回201，update-token更新返回200，无权限返回403","linked_rule_ids":[]},
+    {"id":"AAS-T016","title":"访问规则/ABAC","levels":["C1","C2","C3"],"source":{"source_id":"IDTA-01004-3.1","locator":"p.7-8"},"runner":"authorization_policy","expected":"授权结果随工厂/角色/时间/设备状态属性变化并可审计","linked_rule_ids":["PF-AAS-011"]},
+    {"id":"AAS-T017","title":"签名验证","levels":["C1","C2"],"source":{"source_id":"IDTA-01004-3.1","locator":"p.124"},"runner":"signature_validation","expected":"原对象JWS验证通过，篡改后失败","linked_rule_ids":["PF-AAS-012"]},
+    {"id":"AAS-T018","title":"AASX结构","levels":["C2"],"source":{"source_id":"IDTA-01005-3.2","locator":"p.12-14"},"runner":"aasx_package","expected":"aasx-origin、AAS环境关系和Content Types结构有效","linked_rule_ids":["PF-AAS-013"]},
+    {"id":"AAS-T019","title":"AASX补充文件","levels":["C2"],"source":{"source_id":"IDTA-01005-3.2","locator":"p.13,p.17-19"},"runner":"aasx_package","expected":"规定补充文件存在且均通过relationship关联","linked_rule_ids":["PF-AAS-014"]}
+  ]
+}
