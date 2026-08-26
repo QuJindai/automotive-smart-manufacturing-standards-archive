@@ -72,53 +72,65 @@ def extract_page_endpoints(text: str, base_url: str) -> list[str]:
     return list(dict.fromkeys(candidates))
 
 
-def probe_download_metadata(session: requests.Session, hcno: str, referer: str) -> dict:
-    """Inspect wrapper-page metadata and internal endpoints; never store the standard body in public CI."""
-    base = 'https://openstd.samr.gov.cn'
-    endpoint = f'{base}/bzgk/std/showGb?type=download&hcno={hcno}&request_locale=zh_CN'
-    headers = {'Referer': referer, 'Accept': 'application/pdf,text/html,application/octet-stream;q=0.9,*/*;q=0.8'}
-    result = {'hcno': hcno, 'endpoint': endpoint}
+def bounded_html_metadata(r: requests.Response, limit: int = 512 * 1024) -> dict:
+    content_type = r.headers.get('content-type', '').lower()
+    if 'html' not in content_type:
+        return {}
+    chunks = []
+    total = 0
+    for chunk in r.iter_content(chunk_size=16384):
+        if not chunk:
+            continue
+        remain = limit - total
+        if remain <= 0:
+            break
+        chunks.append(chunk[:remain])
+        total += min(len(chunk), remain)
+        if total >= limit:
+            break
+    raw = b''.join(chunks)
+    enc = r.encoding or 'utf-8'
+    text = raw.decode(enc, errors='replace')
+    return {
+        'wrapper_bytes_read': len(raw),
+        'wrapper_sha256': hashlib.sha256(raw).hexdigest(),
+        'wrapper_hits': scan_text(text, r.url)[:120],
+        'wrapper_endpoints': extract_page_endpoints(text, r.url)[:120],
+    }
 
-    r0 = session.get(endpoint, headers=headers, timeout=30, allow_redirects=False, stream=True)
+
+def probe_stream_metadata(session: requests.Session, url: str, referer: str) -> dict:
+    headers = {'Referer': referer, 'Accept': 'application/pdf,text/html,application/octet-stream;q=0.9,*/*;q=0.8'}
+    result = {'endpoint': url}
+    r0 = session.get(url, headers=headers, timeout=30, allow_redirects=False, stream=True)
     result['initial'] = response_metadata(r0)
     location = r0.headers.get('location')
     r0.close()
-
     try:
-        r1 = session.get(endpoint, headers=headers, timeout=30, allow_redirects=True, stream=True)
+        r1 = session.get(url, headers=headers, timeout=30, allow_redirects=True, stream=True)
         result['final'] = response_metadata(r1)
         result['redirect_chain'] = [response_metadata(x) for x in r1.history]
-        content_type = r1.headers.get('content-type', '').lower()
-        result['is_pdf_by_header'] = 'pdf' in content_type
+        ct = r1.headers.get('content-type', '').lower()
+        result['is_pdf_by_header'] = 'pdf' in ct
         result['is_attachment'] = 'attachment' in r1.headers.get('content-disposition', '').lower()
-
-        # HTML wrapper is not the standard text. Read only a bounded wrapper body to resolve the next official endpoint.
-        if 'html' in content_type:
-            chunks = []
-            total = 0
-            for chunk in r1.iter_content(chunk_size=16384):
-                if not chunk:
-                    continue
-                remain = 512 * 1024 - total
-                if remain <= 0:
-                    break
-                chunks.append(chunk[:remain])
-                total += min(len(chunk), remain)
-                if total >= 512 * 1024:
-                    break
-            raw = b''.join(chunks)
-            enc = r1.encoding or 'utf-8'
-            text = raw.decode(enc, errors='replace')
-            result['wrapper_bytes_read'] = len(raw)
-            result['wrapper_sha256'] = hashlib.sha256(raw).hexdigest()
-            result['wrapper_hits'] = scan_text(text, r1.url)[:120]
-            result['wrapper_endpoints'] = extract_page_endpoints(text, r1.url)[:120]
+        result.update(bounded_html_metadata(r1))
         r1.close()
     except Exception as exc:
         result['follow_error'] = str(exc)
-
     if location:
-        result['resolved_location'] = urljoin(endpoint, location)
+        result['resolved_location'] = urljoin(url, location)
+    return result
+
+
+def probe_download_metadata(session: requests.Session, hcno: str, referer: str) -> dict:
+    """Inspect official download wrappers/endpoints only; never store standard text in public CI."""
+    base = 'https://openstd.samr.gov.cn'
+    show_url = f'{base}/bzgk/std/showGb?type=download&hcno={hcno}&request_locale=zh_CN'
+    result = {'hcno': hcno, 'showGb': probe_stream_metadata(session, show_url, referer)}
+
+    # showGb download wrapper invokes relative viewGb?hcno=<id>; probe that next official hop in same cookie session.
+    view_url = f'{base}/bzgk/std/viewGb?hcno={hcno}'
+    result['viewGb'] = probe_stream_metadata(session, view_url, show_url)
     return result
 
 
@@ -146,8 +158,7 @@ def probe_one(session: requests.Session, target: dict, out_dir: Path) -> dict:
             try:
                 sr = fetch(session, script_url)
                 hits = scan_text(sr.text, sr.url)
-                # Skip giant generic libraries unless a likely standards endpoint is present.
-                useful = [h for h in hits if any('/bzgk/' in u or '/std/' in u or '/gb/' in u for u in h.get('urls', [])) or re.search(r'(?i)(showGb|download|pdf|hcno|stdFile)', h['text'])]
+                useful = [h for h in hits if any('/bzgk/' in u or '/std/' in u or '/gb/' in u for u in h.get('urls', [])) or re.search(r'(?i)(showGb|download|pdf|hcno|stdFile|viewGb)', h['text'])]
                 if useful:
                     result['script_hits'].append({'url': sr.url, 'hits': useful[:30]})
             except Exception as exc:
@@ -159,10 +170,16 @@ def probe_one(session: requests.Session, target: dict, out_dir: Path) -> dict:
         for block in result['script_hits']:
             for hit in block.get('hits', []):
                 candidate_urls.extend(hit.get('urls', []))
-        candidate_urls.extend(result.get('download_probe', {}).get('wrapper_endpoints', []))
+        dp = result.get('download_probe', {})
+        for hop in ['showGb','viewGb']:
+            candidate_urls.extend(dp.get(hop, {}).get('wrapper_endpoints', []))
+            if dp.get(hop, {}).get('resolved_location'):
+                candidate_urls.append(dp[hop]['resolved_location'])
+            if dp.get(hop, {}).get('final', {}).get('url'):
+                candidate_urls.append(dp[hop]['final']['url'])
         for u in dict.fromkeys(candidate_urls):
             host = urlparse(u).netloc.lower()
-            if host.endswith('samr.gov.cn') or host.endswith('sac.gov.cn'):
+            if host.endswith('samr.gov.cn') or host.endswith('sac.gov.cn') or host.endswith('gb688.cn'):
                 result['candidates'].append(u)
 
         result['status'] = 'PROBED'
