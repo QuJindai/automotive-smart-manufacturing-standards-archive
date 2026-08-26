@@ -74,3 +74,44 @@ jobs:
               assert r.get('isError') is True, (f,r)
           print('DOWNLOAD_POLICY_GUARDS=PASS')
           PY
+
+  drive-lifecycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Advance real fixture from Drive archive to completed
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging'
+          call() { curl -fsS -X POST "$URL" -H 'content-type: application/json' --data "$1"; }
+          ID='download-oidcfixture'
+          call '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"resume_download","arguments":{"download_id":"download-oidcfixture","result":{"type":"drive_archive_result","drive_refs":[{"file_id":"1uq26Z9WKeM0e_4bRPsVtugIrhWfKcA21","name":"Attention_Is_All_You_Need_1706.03762.pdf","size":2215244,"sha256":"bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697","web_url":"https://drive.google.com/file/d/1uq26Z9WKeM0e_4bRPsVtugIrhWfKcA21/view"}]}}}}' > archive.json
+          python - <<'PY'
+          import json
+          r=json.load(open('archive.json'))['result']
+          assert not r.get('isError'), r
+          s=r['structuredContent']
+          assert s['status']=='DRIVE_VERIFYING', s
+          assert s['drive_refs'][0]['file_id']=='1uq26Z9WKeM0e_4bRPsVtugIrhWfKcA21'
+          PY
+          call '{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"resume_download","arguments":{"download_id":"download-oidcfixture","result":{"type":"drive_verify_result","verified":true}}}}' > verify.json
+          python - <<'PY'
+          import json
+          r=json.load(open('verify.json'))['result']
+          assert not r.get('isError'), r
+          s=r['structuredContent']
+          assert s['drive_verified'] is True
+          assert s['next_action']['action']=='FINALIZE'
+          PY
+          call '{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"finalize_download","arguments":{"download_id":"download-oidcfixture"}}}' > final.json
+          python - <<'PY'
+          import json
+          r=json.load(open('final.json'))['result']
+          assert not r.get('isError'), r
+          s=r['structuredContent']
+          assert s['status']=='COMPLETED', s
+          assert s['drive_verified'] is True
+          assert s['failed_files']==[]
+          print('DOWNLOAD_DRIVE_LIFECYCLE=PASS')
+          PY
