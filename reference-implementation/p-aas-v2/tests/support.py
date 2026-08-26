@@ -13,14 +13,16 @@ FIXTURE = V1_ROOT / 'examples' / 'automotive-eol-station' / 'aas-environment.jso
 ENV = json.loads(FIXTURE.read_text(encoding='utf-8'))
 
 class FakeBaSyx:
-    def __init__(self):
+    def __init__(self, openapi_base64=False):
         self.env = json.loads(json.dumps(ENV))
+        self.openapi_base64 = openapi_base64
         self.server = None
         self.thread = None
         self.base_url = None
 
     def start(self):
         env = self.env
+        openapi_base64 = self.openapi_base64
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
@@ -34,7 +36,7 @@ class FakeBaSyx:
                 if self.path == '/large-json':
                     return self._json(200, {'payload':'x'*20000, 'tail':'parsed'})
                 if self.path == '/v3/api-docs':
-                    return self._json(200, {'openapi':'3.0.1','paths':{
+                    doc={'openapi':'3.0.1','paths':{
                         '/shells': {'post':{}},
                         '/shells/{aasIdentifier}': {'get':{}},
                         '/submodels': {'post':{}},
@@ -42,7 +44,12 @@ class FakeBaSyx:
                         '/concept-descriptions': {'post':{}},
                         '/concept-descriptions/{cdIdentifier}': {'get':{}},
                         '/upload': {'post':{}},
-                    }})
+                    }}
+                    if openapi_base64:
+                        import base64
+                        encoded=base64.urlsafe_b64encode(json.dumps(doc,separators=(',',':')).encode()).decode().rstrip('=')
+                        return self._json(200, encoded)
+                    return self._json(200, doc)
                 if self.path.startswith('/shells/'):
                     import base64
                     token=self.path.split('/shells/',1)[1]

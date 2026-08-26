@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import secrets
 from typing import Any
@@ -21,10 +22,29 @@ class BasyxAdapter:
     def health(self) -> AdapterResponse:
         return self.fetch_openapi()
 
+    @staticmethod
+    def _normalize_openapi_payload(payload: Any) -> dict[str, Any] | None:
+        if isinstance(payload, dict):
+            return payload
+        if not isinstance(payload, str) or not payload:
+            return None
+        # BaSyx 2.0.0-milestone-13 AAS Environment may expose SpringDoc as
+        # a JSON string whose value is URL-safe-base64 encoded OpenAPI JSON.
+        # Keep this compatibility isolated in the BaSyx adapter.
+        try:
+            padded = payload + "=" * ((4 - len(payload) % 4) % 4)
+            decoded = base64.urlsafe_b64decode(padded).decode("utf-8")
+            candidate = json.loads(decoded)
+            return candidate if isinstance(candidate, dict) else None
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+
     def fetch_openapi(self) -> AdapterResponse:
         ev = request("GET", self.base_url + "/v3/api-docs")
-        if ev.status == 200 and isinstance(ev.json_body, dict):
-            self._openapi = ev.json_body
+        normalized = self._normalize_openapi_payload(ev.json_body)
+        if ev.status == 200 and normalized is not None:
+            self._openapi = normalized
+            return AdapterResponse(ev.status, normalized, ev.body_text, ev.url)
         return self._response(ev)
 
     def _paths(self) -> dict[str, Any]:
@@ -86,7 +106,11 @@ class BasyxAdapter:
 
     def _multipart(self, filename: str, payload: bytes, mime: str) -> tuple[bytes, str]:
         boundary = "----PAASV2" + secrets.token_hex(8)
-        body = (f"--{boundary}\r\n" f"Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n" f"Content-Type: {mime}\r\n\r\n").encode() + payload + f"\r\n--{boundary}--\r\n".encode()
+        body = (
+            f"--{boundary}\r\n"
+            f"Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+            f"Content-Type: {mime}\r\n\r\n"
+        ).encode() + payload + f"\r\n--{boundary}--\r\n".encode()
         return body, boundary
 
     def import_environment(self, environment: dict[str, Any]) -> ImportResult:
