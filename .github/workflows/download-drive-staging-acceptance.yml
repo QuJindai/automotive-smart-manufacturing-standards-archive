@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   drive-contract:
@@ -86,4 +87,31 @@ jobs:
           for secret in ('refresh_token','access_token','client_secret','ciphertext','session_url'):
               assert secret not in text, secret
           print('DOWNLOAD_DRIVE_ADOPTION_INSPECTION=PASS')
+          PY
+
+  oidc-auth-required:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Assert trusted executor gets AUTH_REQUIRED before Google consent
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive-staging'
+          OIDC_JSON=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=download-mcp")
+          OIDC_TOKEN=$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$OIDC_JSON")
+          code=$(curl -sS -o response.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            "$BASE/executor/sessions/download-largefixture")
+          test "$code" = '409'
+          python - <<'PY'
+          import json
+          p=json.load(open('response.json'))
+          assert p['code']=='AUTH_REQUIRED', p
+          assert p['scope']=='https://www.googleapis.com/auth/drive.file', p
+          assert p['authorization_url']=='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive-staging/oauth/start', p
+          text=json.dumps(p).lower()
+          for secret in ('refresh_token','access_token','client_secret','ciphertext','session_url','upload_sessions'):
+              assert secret not in text, secret
+          print('DOWNLOAD_DRIVE_OIDC_AUTH_REQUIRED=PASS')
           PY
