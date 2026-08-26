@@ -1,0 +1,45 @@
+name: Download Acceptance Full GGUF
+
+on:
+  push:
+    paths:
+      - '.github/workflows/download-acceptance-full-gguf.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-gguf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Download and validate full GGUF
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          url='https://huggingface.co/rbai86/tinyllama-GGUF/resolve/main/tinyllama.Q4_K_M.gguf?download=true'
+          curl -L --fail --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 900 -o out/tinyllama.Q4_K_M.gguf "$url"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('out/tinyllama.Q4_K_M.gguf')
+          b=p.read_bytes()[:4]
+          assert b==b'GGUF', b
+          assert p.stat().st_size > 500_000_000, p.stat().st_size
+          print('FULL_GGUF_ACCEPTANCE=PASS', p.stat().st_size)
+          PY
+          sha256sum out/tinyllama.Q4_K_M.gguf > out/SHA256SUMS.txt
+          stat -c '%s' out/tinyllama.Q4_K_M.gguf > out/SIZE.txt
+          cat out/SHA256SUMS.txt
+      - name: Upload transfer artifact for Drive handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-gguf-drive-handoff-${{ github.run_id }}
+          path: |
+            out/tinyllama.Q4_K_M.gguf
+            out/SHA256SUMS.txt
+            out/SIZE.txt
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
