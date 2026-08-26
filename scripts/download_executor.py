@@ -13,6 +13,7 @@ import json
 import mimetypes
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -24,7 +25,7 @@ from typing import BinaryIO, Iterable, Iterator
 
 DRIVE_ALIGNMENT = 256 * 1024
 DEFAULT_CHUNK = 8 * 1024 * 1024
-USER_AGENT = "DownloadExecutor/0.1 (+GitHubActions)"
+USER_AGENT = "DownloadExecutor/0.2 (+GitHubActions)"
 
 
 @dataclass
@@ -82,6 +83,23 @@ def redact_url(raw: str) -> str:
 
 def should_fallback(result: AssetResult) -> bool:
     return result.status != "PASS"
+
+
+def fallback_methods(asset: dict) -> list[str]:
+    evidence = asset.get("evidence") if isinstance(asset, dict) else None
+    evidence = evidence if isinstance(evidence, dict) else {}
+    raw = evidence.get("fallback_chain")
+    methods = raw if isinstance(raw, list) else []
+    normalized: list[str] = ["native"]
+    for method in methods:
+        value = str(method).strip().lower()
+        if value in {"native", "browser", "alternate_egress"} and value not in normalized:
+            normalized.append(value)
+    if evidence.get("browser_hint") is True and "browser" not in normalized:
+        normalized.append("browser")
+    if evidence.get("browser_hint") is not True and not methods:
+        return ["native"]
+    return normalized
 
 
 def sha256_file(path: Path, chunk_size: int = DEFAULT_CHUNK) -> str:
@@ -194,6 +212,55 @@ def download_native(asset: dict, out_dir: Path) -> AssetResult:
         )
 
 
+def download_browser(asset: dict, out_dir: Path) -> AssetResult:
+    asset_id = str(asset.get("asset_id") or "")
+    filename = str(asset.get("filename") or f"{asset_id}.bin")
+    url = str(asset.get("source_url") or "")
+    destination = out_dir / filename
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        helper = Path(__file__).with_name("download_browser.mjs")
+        proc = subprocess.run(
+            ["node", str(helper), str(destination)],
+            input=json.dumps(asset, separators=(",", ":")),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=180,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError((proc.stderr or "browser helper failed")[-1000:])
+        size, digest = validate_file(
+            destination,
+            asset.get("kind"),
+            int(asset["expected_size_bytes"]) if asset.get("expected_size_bytes") else None,
+            str(asset["expected_sha256"]) if asset.get("expected_sha256") else None,
+        )
+        return AssetResult(
+            asset_id=asset_id,
+            filename=filename,
+            status="PASS",
+            bytes=size,
+            sha256=digest,
+            method="browser",
+            artifact_path=str(destination),
+            source_url_redacted=redact_url(url),
+        )
+    except Exception as exc:
+        destination.unlink(missing_ok=True)
+        return AssetResult(
+            asset_id=asset_id,
+            filename=filename,
+            status="FAIL",
+            bytes=0,
+            sha256=None,
+            method="browser",
+            error=str(exc)[:1000],
+            source_url_redacted=redact_url(url) if url else None,
+        )
+
+
 def query_drive_offset(session_url: str, total: int) -> int:
     """Return next byte offset for a resumable upload session."""
     try:
@@ -204,7 +271,6 @@ def query_drive_offset(session_url: str, total: int) -> int:
             data=b"",
             timeout=60,
         ) as response:
-            # A completed session may return 200/201 without Range.
             if response.status in {200, 201}:
                 return total
             return 0
@@ -240,11 +306,7 @@ def _put_drive_chunk(session_url: str, chunk: bytes, start: int, total: int) -> 
 
 
 def upload_direct_resumable(asset: dict, session_url: str, chunk_size: int = DEFAULT_CHUNK) -> AssetResult:
-    """Stream a source into Drive using the supplied one-file resumable session.
-
-    This keeps Google refresh/access credentials in the control plane. The runner
-    only sees the opaque resumable session URI for this one file.
-    """
+    """Stream a source into Drive using the supplied one-file resumable session."""
     asset_id = str(asset.get("asset_id") or "")
     filename = str(asset.get("filename") or f"{asset_id}.bin")
     url = str(asset.get("source_url") or "")
@@ -257,15 +319,11 @@ def upload_direct_resumable(asset: dict, session_url: str, chunk_size: int = DEF
         offset = query_drive_offset(session_url, total)
         if offset >= total:
             return AssetResult(asset_id, filename, "PASS", total, asset.get("expected_sha256"), "drive-resumable-resume", drive_ref={"size": total})
-
         headers = {"Range": f"bytes={offset}-"} if offset else {}
         with _request(url, headers=headers, timeout=300) as source:
             if offset and source.status != 206:
                 raise RuntimeError("source ignored Range during resume")
             digest = hashlib.sha256()
-            # Hash bytes before resumed offset when a known expected hash is absent by
-            # replaying source ranges. This is bandwidth-costly but avoids trusting a
-            # partial hash checkpoint that the runner does not persist.
             if offset:
                 with _request(url, headers={"Range": f"bytes=0-{offset-1}"}, timeout=300) as prefix_source:
                     if prefix_source.status != 206:
@@ -310,6 +368,31 @@ def upload_direct_resumable(asset: dict, session_url: str, chunk_size: int = DEF
         return AssetResult(asset_id, filename, "FAIL", 0, None, "drive-resumable", str(exc)[:1000], source_url_redacted=redact_url(url))
 
 
+def run_small_asset(asset: dict, out_dir: Path) -> AssetResult:
+    last: AssetResult | None = None
+    for method in fallback_methods(asset):
+        if method == "native":
+            current = download_native(asset, out_dir)
+        elif method == "browser":
+            current = download_browser(asset, out_dir)
+        else:
+            current = AssetResult(
+                asset_id=str(asset.get("asset_id") or ""),
+                filename=str(asset.get("filename") or "download.bin"),
+                status="FAIL",
+                bytes=0,
+                sha256=None,
+                method=method,
+                error="fallback method is delegated to control plane",
+                source_url_redacted=redact_url(str(asset.get("source_url") or "")) if asset.get("source_url") else None,
+            )
+        last = current
+        if not should_fallback(current):
+            return current
+    assert last is not None
+    return last
+
+
 def run_job(job: dict, out_dir: Path) -> dict:
     assets = job.get("assets")
     if not isinstance(assets, list) or not assets:
@@ -325,7 +408,7 @@ def run_job(job: dict, out_dir: Path) -> dict:
         if session and size > small_limit:
             result = upload_direct_resumable(raw, str(session))
         else:
-            result = download_native(raw, out_dir)
+            result = run_small_asset(raw, out_dir)
         results.append(result)
     drive_refs = [r.drive_ref for r in results if r.drive_ref and r.status == "PASS"]
     return {
