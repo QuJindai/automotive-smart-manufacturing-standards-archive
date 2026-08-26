@@ -72,6 +72,53 @@ jobs:
           print('EXECUTOR_JOB_FETCH=PASS',j['download_id'],len(j['assets']))
           PY
 
+      - name: Preflight large-file Drive routing
+        id: large
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from scripts.download_executor import redact_url, source_size
+          j=json.load(open('job.json'))
+          limit=int(j.get('small_limit_bytes') or 100*1024*1024)
+          sessions=j.get('upload_sessions') or {}
+          blocked=[]
+          for a in j.get('assets',[]):
+              if not isinstance(a,dict):
+                  continue
+              size=int(a.get('expected_size_bytes') or 0)
+              if not size:
+                  size=source_size(str(a.get('source_url') or '')) or 0
+                  if size:
+                      a['expected_size_bytes']=size
+              aid=str(a.get('asset_id') or '')
+              if size>limit and not sessions.get(aid):
+                  blocked.append((a,size))
+          json.dump(j,open('job.json','w'),ensure_ascii=False,separators=(',',':'))
+          if blocked:
+              assets=[]
+              for a,size in blocked:
+                  assets.append({
+                      'asset_id':str(a.get('asset_id') or ''),
+                      'filename':str(a.get('filename') or 'download.bin'),
+                      'status':'FAIL','bytes':0,'sha256':None,
+                      'method':'drive-resumable-required',
+                      'error':f'DIRECT_DRIVE_SESSION_REQUIRED:{size}',
+                      'drive_ref':None,'artifact_path':None,
+                      'source_url_redacted':redact_url(str(a.get('source_url') or '')),
+                  })
+              json.dump({'download_id':j.get('download_id'),'assets':assets,'drive_refs':[],
+                         'pass_count':0,'fail_count':len(assets),'auth_required':True},
+                        open('result.json','w'),ensure_ascii=False,indent=2)
+              open('large.env','w').write('blocked=true\n')
+              print('LARGE_ROUTE=AUTH_REQUIRED',[(x[0].get('filename'),x[1]) for x in blocked])
+          else:
+              open('large.env','w').write('blocked=false\n')
+              print('LARGE_ROUTE=READY')
+          PY
+          cat large.env >> "$GITHUB_OUTPUT"
+
       - name: Detect browser fallback requirement
         id: browser
         shell: bash
@@ -88,7 +135,7 @@ jobs:
           echo "BROWSER_REQUIRED=$required"
 
       - name: Install browser runtime
-        if: steps.browser.outputs.required == 'true'
+        if: steps.large.outputs.blocked != 'true' && steps.browser.outputs.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -100,8 +147,15 @@ jobs:
       - name: Execute download
         id: execute
         shell: bash
+        env:
+          LARGE_BLOCKED: ${{ steps.large.outputs.blocked }}
         run: |
           set +e
+          if [ "$LARGE_BLOCKED" = 'true' ]; then
+            echo 'exit_code=3' >> "$GITHUB_OUTPUT"
+            test -f result.json
+            exit 0
+          fi
           rm -rf out result.json
           mkdir -p out
           python scripts/download_executor.py --job job.json --out out --result result.json
