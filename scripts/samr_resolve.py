@@ -73,9 +73,6 @@ def extract_page_endpoints(text: str, base_url: str) -> list[str]:
 
 
 def bounded_html_metadata(r: requests.Response, limit: int = 512 * 1024) -> dict:
-    content_type = r.headers.get('content-type', '').lower()
-    if 'html' not in content_type:
-        return {}
     chunks = []
     total = 0
     for chunk in r.iter_content(chunk_size=16384):
@@ -99,6 +96,22 @@ def bounded_html_metadata(r: requests.Response, limit: int = 512 * 1024) -> dict
     }
 
 
+def bounded_binary_prefix(r: requests.Response, limit: int = 32) -> dict:
+    """Read only a tiny file signature; never persist the standard body in public CI."""
+    prefix = b''
+    for chunk in r.iter_content(chunk_size=limit):
+        if chunk:
+            prefix = chunk[:limit]
+            break
+    return {
+        'prefix_bytes_read': len(prefix),
+        'prefix_hex': prefix.hex(),
+        'prefix_ascii': ''.join(chr(b) if 32 <= b < 127 else '.' for b in prefix),
+        'starts_with_pdf_magic': prefix.startswith(b'%PDF-'),
+        'starts_with_zip_magic': prefix.startswith(b'PK'),
+    }
+
+
 def probe_stream_metadata(session: requests.Session, url: str, referer: str) -> dict:
     headers = {'Referer': referer, 'Accept': 'application/pdf,text/html,application/octet-stream;q=0.9,*/*;q=0.8'}
     result = {'endpoint': url}
@@ -113,7 +126,10 @@ def probe_stream_metadata(session: requests.Session, url: str, referer: str) -> 
         ct = r1.headers.get('content-type', '').lower()
         result['is_pdf_by_header'] = 'pdf' in ct
         result['is_attachment'] = 'attachment' in r1.headers.get('content-disposition', '').lower()
-        result.update(bounded_html_metadata(r1))
+        if 'html' in ct:
+            result.update(bounded_html_metadata(r1))
+        else:
+            result.update(bounded_binary_prefix(r1))
         r1.close()
     except Exception as exc:
         result['follow_error'] = str(exc)
@@ -127,8 +143,6 @@ def probe_download_metadata(session: requests.Session, hcno: str, referer: str) 
     base = 'https://openstd.samr.gov.cn'
     show_url = f'{base}/bzgk/std/showGb?type=download&hcno={hcno}&request_locale=zh_CN'
     result = {'hcno': hcno, 'showGb': probe_stream_metadata(session, show_url, referer)}
-
-    # showGb download wrapper invokes relative viewGb?hcno=<id>; probe that next official hop in same cookie session.
     view_url = f'{base}/bzgk/std/viewGb?hcno={hcno}'
     result['viewGb'] = probe_stream_metadata(session, view_url, show_url)
     return result
