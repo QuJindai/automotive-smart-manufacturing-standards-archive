@@ -38,7 +38,7 @@ jobs:
             echo 'Private/public Drive URL must not be committed in reference implementation.'
             exit 1
           fi
-          if grep -RIlE '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|sk-[A-Za-z0-9]{20,}' reference-implementation/p-aas-v1; then
+          if grep -RIlE -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|sk-[A-Za-z0-9]{20,}' reference-implementation/p-aas-v1; then
             echo 'Possible real secret/private key found.'
             exit 1
           fi
