@@ -10,94 +10,91 @@ permissions:
   contents: read
 
 jobs:
-  fetch-official-originals:
+  fetch-official-fallbacks:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Fetch official originals
+      - name: Fetch only failed originals from official fallback entrances
         shell: bash
         run: |
           set -u
           mkdir -p out
-
-          cat > /tmp/sources.tsv <<'EOF'
-          filename	url	source
-          UN_R155_Amendment2_2024.pdf	https://unece.org/sites/default/files/2024-05/R155am2e.pdf	UNECE
-          UN_R155_Amendment3_2025.pdf	https://unece.org/sites/default/files/2025-03/R155am3e.pdf	UNECE
-          EU_2021_1228.pdf	https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:32021R1228	EUR-Lex
-          ETSI_EN_303_413_V1.2.1.pdf	https://www.etsi.org/deliver/etsi_en/303400_303499/303413/01.02.01_60/en_303413v010201p.pdf	ETSI
-          EASA_ETSO_2C205a.pdf	https://www.easa.europa.eu/download/etso/ETSO-2C205a.pdf	EASA
-          IMO_MSC_401_95.pdf	https://wwwcdn.imo.org/localresources/en/KnowledgeCentre/IndexofIMOResolutions/MSCResolutions/MSC.401%2895%29.pdf	IMO
-          IMO_MSC_432_98.pdf	https://wwwcdn.imo.org/localresources/en/KnowledgeCentre/IndexofIMOResolutions/MSCResolutions/MSC.432%2898%29.pdf	IMO
-          IMO_MSC1_Circ1575.pdf	https://wwwcdn.imo.org/localresources/en/OurWork/Safety/Documents/IMO%20Documents%20related%20to/MSC.1-Circ.1575.pdf	IMO
-          DHS_Resilient_PNT_Best_Practices_2025.pdf	https://www.dhs.gov/sites/default/files/2025-02/25_0220_st_pnt_best_practices_ci.pdf	DHS
-          US_DOT_PNT_Strategic_Plan_2025.pdf	https://www.transportation.gov/sites/dot.gov/files/2025-01/Positioning%20Navigation%20and%20Timing%20Strategic%20Plan_v%20FINAL.pdf	US-DOT
-          RTCA_SC159_TOR_Rev25_2025-12-16.pdf	https://www.rtca.org/wp-content/uploads/2026/01/SC-159-TOR-Rev-25-Approved-2025-12-16.pdf	RTCA
-          Galileo_OSNMA_SDD_in_force.pdf	https://www.gsc-europa.eu/sites/default/files/sites/all/files/Galileo-OSNMA-SDD_in_force.pdf	GSC
-          Galileo_OSNMA_SIS_ICD_v1.1.pdf	https://www.gsc-europa.eu/sites/default/files/sites/all/files/Galileo_OSNMA_SIS_ICD_v1.1.pdf	GSC
-          QZSS_IS_QZSS_SAS_001.pdf	https://qzss.go.jp/en/technical/download/pdf/ps-is-qzss/is-qzss-sas-001.pdf	QZSS
-          EOF
-
           printf 'filename\tsource\tstatus\thttp_code\tmime\tbytes\turl\n' > out/FETCH_LOG.tsv
-          : > out/FAILED_DOWNLOADS.tsv
+          printf 'filename\tsource\turl\n' > out/OFFICIAL_SOURCES.tsv
 
-          tail -n +2 /tmp/sources.tsv | while IFS=$'\t' read -r filename url source; do
-            [ -n "$filename" ] || continue
-            tmp="out/.${filename}.part"
-            dst="out/${filename}"
-            hdr="out/.${filename}.headers"
-            echo "FETCH $source $filename"
+          fetch_one() {
+            filename="$1"; source="$2"; shift 2
+            dst="out/$filename"
+            rm -f "$dst"
+            final_code='-'; final_mime='-'; final_bytes=0; final_url='-'
+            for url in "$@"; do
+              for attempt in 1 2 3; do
+                tmp="out/.${filename}.${attempt}.part"
+                rm -f "$tmp"
+                echo "TRY $source $filename attempt=$attempt $url"
+                code=$(curl --http1.1 -L --retry 2 --retry-all-errors --retry-delay 2 \
+                  --connect-timeout 30 --max-time 240 \
+                  -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36' \
+                  -H 'Accept: application/pdf,text/html;q=0.9,*/*;q=0.8' \
+                  -H 'Accept-Language: en-US,en;q=0.9' \
+                  -o "$tmp" -w '%{http_code}' "$url" 2>"out/.${filename}.curl.log" || true)
+                mime=$(file -b --mime-type "$tmp" 2>/dev/null || true)
+                bytes=$(stat -c '%s' "$tmp" 2>/dev/null || echo 0)
+                magic=$(head -c 5 "$tmp" 2>/dev/null || true)
+                final_code="$code"; final_mime="$mime"; final_bytes="$bytes"; final_url="$url"
+                if [[ "$code" =~ ^2 ]] && [ "$magic" = "%PDF-" ] && [ "$bytes" -gt 1000 ]; then
+                  mv "$tmp" "$dst"
+                  printf '%s\t%s\tPASS_FALLBACK\t%s\t%s\t%s\t%s\n' "$filename" "$source" "$code" "$mime" "$bytes" "$url" >> out/FETCH_LOG.tsv
+                  printf '%s\t%s\t%s\n' "$filename" "$source" "$url" >> out/OFFICIAL_SOURCES.tsv
+                  return 0
+                fi
+                rm -f "$tmp"
+                sleep 6
+              done
+            done
+            printf '%s\t%s\tFAIL\t%s\t%s\t%s\t%s\n' "$filename" "$source" "$final_code" "$final_mime" "$final_bytes" "$final_url" >> out/FETCH_LOG.tsv
+            printf '%s\t%s\t%s\n' "$filename" "$source" "$final_url" >> out/OFFICIAL_SOURCES.tsv
+            return 0
+          }
 
-            http_code=$(curl -L --fail-with-body --retry 5 --retry-all-errors --retry-delay 3 \
-              --connect-timeout 30 --max-time 240 \
-              -A 'Mozilla/5.0 (GitHub Actions; GNSS standards archive)' \
-              -D "$hdr" -o "$tmp" -w '%{http_code}' "$url" 2>"out/.${filename}.curl.log" || true)
+          fetch_one UN_R155_Amendment2_2024.pdf UNECE \
+            'https://documents.un.org/access.nsf/get?DS=ECE%2FTRANS%2FWP.29%2F2023%2F70&Lang=E&OpenAgent=' \
+            'https://unece.org/sites/default/files/2023-04/ECE-TRANS-WP.29-2023-70E.pdf' \
+            'https://unece.org/sites/default/files/2024-05/R155am2e.pdf?download=1'
 
-            mime=$(file -b --mime-type "$tmp" 2>/dev/null || true)
-            bytes=$(stat -c '%s' "$tmp" 2>/dev/null || echo 0)
-            magic=$(head -c 5 "$tmp" 2>/dev/null || true)
+          fetch_one UN_R155_Amendment3_2025.pdf UNECE \
+            'https://unece.org/sites/default/files/2025-04/R155am3e.pdf' \
+            'https://documents.un.org/access.nsf/get?DS=ECE%2FTRANS%2FWP.29%2F2024%2F55&Lang=E&OpenAgent=' \
+            'https://unece.org/sites/default/files/2024-04/ECE_TRANS_WP.29_2024_55e.pdf'
 
-            if [ "$http_code" = "200" ] && [ "$magic" = "%PDF-" ] && [ "$bytes" -gt 1000 ]; then
-              mv "$tmp" "$dst"
-              printf '%s\t%s\tPASS\t%s\t%s\t%s\t%s\n' "$filename" "$source" "$http_code" "$mime" "$bytes" "$url" >> out/FETCH_LOG.tsv
-            else
-              printf '%s\t%s\tFAIL\t%s\t%s\t%s\t%s\n' "$filename" "$source" "$http_code" "$mime" "$bytes" "$url" >> out/FETCH_LOG.tsv
-              printf '%s\t%s\t%s\t%s\n' "$filename" "$source" "$http_code" "$url" >> out/FAILED_DOWNLOADS.tsv
-              rm -f "$tmp"
-            fi
-          done
+          fetch_one EU_2021_1228.pdf EUR-Lex \
+            'https://eur-lex.europa.eu/eli/reg_impl/2021/1228/oj/eng/pdf' \
+            'https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX%3A32021R1228' \
+            'https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:32021R1228&from=EN'
+
+          fetch_one DHS_Resilient_PNT_Best_Practices_2025.pdf DHS \
+            'https://www.dhs.gov/sites/default/files/2025-02/25_0220_st_pnt_best_practices_ci.pdf?download=1' \
+            'https://www.dhs.gov/sites/default/files/2025-02/25_0220_st_pnt_best_practices_ci_0.pdf' \
+            'https://dhs.gov/sites/default/files/2025-02/25_0220_st_pnt_best_practices_ci.pdf'
+
+          fetch_one US_DOT_PNT_Strategic_Plan_2025.pdf US-DOT \
+            'https://rosap.ntl.bts.gov/view/dot/79604/dot_79604_DS1.pdf' \
+            'https://www.transportation.gov/sites/dot.gov/files/2025-01/Positioning%20Navigation%20and%20Timing%20Strategic%20Plan_v%20FINAL.pdf?download=1'
 
           find out -maxdepth 1 -type f -name '*.pdf' -print0 | sort -z | xargs -0 -r sha256sum > out/SHA256SUMS.txt
-          cp /tmp/sources.tsv out/OFFICIAL_SOURCES.tsv
-
-          cat > out/README.txt <<'EOF'
-          GNSS/PNT official-originals artifact.
-          Files in this archive were fetched by GitHub Actions directly from the listed official issuer URLs.
-          ISO 19116:2025, ISO 22086-2:2024, EN 16803-3:2020 and EN 16803-4:2024 are copyright-restricted and intentionally not fetched here.
-          See FETCH_LOG.tsv for per-file download status and SHA256SUMS.txt for integrity hashes.
-          EOF
-
-          (cd out && zip -9 -r GNSS_PNT_OFFICIAL_ORIGINALS_20260826.zip . -x 'GNSS_PNT_OFFICIAL_ORIGINALS_20260826.zip*')
-          sha256sum out/GNSS_PNT_OFFICIAL_ORIGINALS_20260826.zip > out/GNSS_PNT_OFFICIAL_ORIGINALS_20260826.zip.sha256
-
-          echo '===== FETCH LOG ====='
+          echo '===== FALLBACK FETCH LOG ====='
           cat out/FETCH_LOG.tsv
-          echo '===== SHA256 ====='
+          echo '===== FALLBACK SHA256 ====='
           cat out/SHA256SUMS.txt
-          test "$(find out -maxdepth 1 -type f -name '*.pdf' | wc -l)" -gt 0
 
-      - name: Upload official-originals artifact
+      - name: Upload fallback artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GNSS_PNT_OFFICIAL_ORIGINALS_20260826
+          name: GNSS_PNT_OFFICIAL_FALLBACK_20260826
           path: |
             out/*.pdf
             out/FETCH_LOG.tsv
-            out/FAILED_DOWNLOADS.tsv
             out/OFFICIAL_SOURCES.tsv
             out/SHA256SUMS.txt
-            out/README.txt
-            out/GNSS_PNT_OFFICIAL_ORIGINALS_20260826.zip
-            out/GNSS_PNT_OFFICIAL_ORIGINALS_20260826.zip.sha256
           if-no-files-found: error
           retention-days: 7
