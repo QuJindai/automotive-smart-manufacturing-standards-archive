@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "purpose": "Resolve official SAMR download endpoints only. Do not publish standard text in this public repository.",
+  "targets": [
+    {
+      "reference": "GB/T 37393-2019",
+      "title": "数字化车间 通用技术要求",
+      "detail_url": "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=6A3B78048AE1A481B0B606AF96D85457"
+    },
+    {
+      "reference": "GB/T 37413-2019",
+      "title": "数字化车间 术语和定义",
+      "detail_url": "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=7A0B4FE4E1024DCFCB1C55C23EB93FEB"
+    },
+    {
+      "reference": "GB/T 37700-2019",
+      "title": "信息技术 工业云 参考模型",
+      "detail_url": "https://openstd.samr.gov.cn/bzgk/gb/newGbInfo?hcno=0125520F9B3D45A7E88848FB4E9827BE"
+    }
+  ]
+}
