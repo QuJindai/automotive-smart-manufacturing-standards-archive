@@ -1,5 +1,6 @@
 name: Download Executor CI
 
+# Revalidated for 下载 plugin v1 acceptance on 2026-08-26.
 on:
   push:
     paths:
