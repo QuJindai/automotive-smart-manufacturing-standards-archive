@@ -4,6 +4,7 @@ import base64
 import json
 import secrets
 from typing import Any
+from urllib.parse import urlencode
 
 from .external import AdapterResponse, CapabilityRecord, CapabilityStatus, ImportResult
 from .http import HttpEvidence, TransportBlocked, encode_identifier, request
@@ -28,9 +29,6 @@ class BasyxAdapter:
             return payload
         if not isinstance(payload, str) or not payload:
             return None
-        # BaSyx 2.0.0-milestone-13 AAS Environment may expose SpringDoc as
-        # a JSON string whose value is URL-safe-base64 encoded OpenAPI JSON.
-        # Keep this compatibility isolated in the BaSyx adapter.
         try:
             padded = payload + "=" * ((4 - len(payload) % 4) % 4)
             decoded = base64.urlsafe_b64decode(padded).decode("utf-8")
@@ -90,27 +88,19 @@ class BasyxAdapter:
 
         upload = path_contains("/upload")
         records.append(CapabilityRecord("environment_import", [], bool(upload), False, CapabilityStatus.SUPPORTED_NOT_VERIFIED if upload else CapabilityStatus.UNSUPPORTED_WITH_EVIDENCE, "openapi", upload, None, "BaSyx environment upload" if upload else "upload endpoint absent", []))
-
         query_paths = [p for p in paths if "query" in p.lower() or "search" in p.lower()]
         records.append(CapabilityRecord("query", ["AAS-T010"], bool(query_paths), False, CapabilityStatus.SUPPORTED_NOT_VERIFIED if query_paths else CapabilityStatus.UNSUPPORTED_WITH_EVIDENCE, "openapi", query_paths[0] if query_paths else None, None, "query/search path advertised" if query_paths else "query/search endpoint absent from OpenAPI", []))
-
         auth_enabled = bool(self.target_metadata.get("authorization_enabled", False))
         records.append(CapabilityRecord("authorization", ["AAS-T013","AAS-T014","AAS-T015","AAS-T016"], auth_enabled, False, CapabilityStatus.SUPPORTED_NOT_VERIFIED if auth_enabled else CapabilityStatus.UNSUPPORTED_WITH_EVIDENCE, "target-config", None, None, "authorization configured" if auth_enabled else "authorization disabled in target profile", []))
-
         signed = [p for p in paths if "signed" in p.lower()]
         records.append(CapabilityRecord("signed", ["AAS-T017"], bool(signed), False, CapabilityStatus.SUPPORTED_NOT_VERIFIED if signed else CapabilityStatus.UNSUPPORTED_WITH_EVIDENCE, "openapi", signed[0] if signed else None, None, "signed endpoint advertised" if signed else "signed endpoint absent from OpenAPI", []))
-
         aasx = [p for p in paths if "aasx" in p.lower() or "package" in p.lower() or "serialization" in p.lower()]
         records.append(CapabilityRecord("aasx_package", ["AAS-T018","AAS-T019"], bool(aasx), False, CapabilityStatus.SUPPORTED_NOT_VERIFIED if aasx else CapabilityStatus.UNSUPPORTED_WITH_EVIDENCE, "openapi", aasx[0] if aasx else None, None, "AASX/package/serialization path advertised" if aasx else "AASX/package export endpoint absent from OpenAPI", []))
         return records
 
     def _multipart(self, filename: str, payload: bytes, mime: str) -> tuple[bytes, str]:
         boundary = "----PAASV2" + secrets.token_hex(8)
-        body = (
-            f"--{boundary}\r\n"
-            f"Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
-            f"Content-Type: {mime}\r\n\r\n"
-        ).encode() + payload + f"\r\n--{boundary}--\r\n".encode()
+        body = (f"--{boundary}\r\n" f"Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n" f"Content-Type: {mime}\r\n\r\n").encode() + payload + f"\r\n--{boundary}--\r\n".encode()
         return body, boundary
 
     def import_environment(self, environment: dict[str, Any]) -> ImportResult:
@@ -144,3 +134,11 @@ class BasyxAdapter:
 
     def read_concept_description(self, cd_id: str) -> AdapterResponse:
         return self._response(request("GET", f"{self.base_url}/concept-descriptions/{encode_identifier(cd_id)}", headers={"Accept":"application/json"}))
+
+    def serialize_aasx(self, aas_ids: list[str], submodel_ids: list[str], include_concept_descriptions: bool = True) -> HttpEvidence:
+        params: list[tuple[str, str]] = []
+        params.extend(("aasIds", encode_identifier(value)) for value in aas_ids)
+        params.extend(("submodelIds", encode_identifier(value)) for value in submodel_ids)
+        params.append(("includeConceptDescriptions", "true" if include_concept_descriptions else "false"))
+        url = self.base_url + "/serialization?" + urlencode(params, doseq=True)
+        return request("GET", url, headers={"Accept":"application/asset-administration-shell-package+xml"})

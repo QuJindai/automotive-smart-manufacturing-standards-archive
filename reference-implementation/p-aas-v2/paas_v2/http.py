@@ -20,6 +20,7 @@ class HttpEvidence:
     body_text: str
     json_body: Any
     headers: dict[str, str]
+    raw_body: bytes
 
 
 def encode_identifier(value: str) -> str:
@@ -52,4 +53,4 @@ def request(method: str, url: str, body: bytes | dict | None = None, headers: di
     except json.JSONDecodeError:
         obj = None
     body_text = full_text[:16384]
-    return HttpEvidence(method.upper(), url, int(status), body_text, obj, resp_headers)
+    return HttpEvidence(method.upper(), url, int(status), body_text, obj, resp_headers, raw)
