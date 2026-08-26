@@ -1,0 +1,162 @@
+name: GNSS Official Recovery Cross-Runner
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gnss-recovery-crossrunner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  curl-crossrunner:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Fetch through official landing sessions
+        shell: bash
+        run: |
+          set -u
+          mkdir -p out
+          printf 'filename\tstatus\thttp_code\tbytes\turl\n' > out/FETCH_LOG.tsv
+
+          prime_and_fetch() {
+            filename="$1"; landing="$2"; url="$3"
+            jar="out/.cookies.txt"; tmp="out/.${filename}.part"; dst="out/${filename}"
+            rm -f "$jar" "$tmp" "$dst"
+            curl -L --connect-timeout 15 --max-time 45 \
+              -A 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/151 Safari/537.36' \
+              -c "$jar" -o /dev/null "$landing" >/dev/null 2>&1 || true
+            last='-'
+            for i in 1 2 3 4 5 6; do
+              rm -f "$tmp"
+              code=$(curl -L --http1.1 --connect-timeout 15 --max-time 45 \
+                -A 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/151 Safari/537.36' \
+                -H 'Accept: application/pdf,text/html;q=0.9,*/*;q=0.8' \
+                -H 'Accept-Language: en-US,en;q=0.9' \
+                -b "$jar" -c "$jar" -e "$landing" \
+                -o "$tmp" -w '%{http_code}' "$url" 2>/dev/null || true)
+              bytes=$(wc -c < "$tmp" 2>/dev/null || echo 0)
+              magic=$(head -c 5 "$tmp" 2>/dev/null || true)
+              last="$code"
+              echo "$filename try=$i code=$code bytes=$bytes magic=$magic"
+              if [[ "$code" =~ ^2 ]] && [ "$magic" = '%PDF-' ] && [ "$bytes" -gt 1000 ]; then
+                mv "$tmp" "$dst"
+                printf '%s\tPASS\t%s\t%s\t%s\n' "$filename" "$code" "$bytes" "$url" >> out/FETCH_LOG.tsv
+                return 0
+              fi
+              rm -f "$tmp"
+              sleep 8
+            done
+            printf '%s\tFAIL\t%s\t0\t%s\n' "$filename" "$last" "$url" >> out/FETCH_LOG.tsv
+          }
+
+          prime_and_fetch UN_R155_Amendment2_2024.pdf \
+            'https://unece.org/transport/documents' \
+            'https://unece.org/sites/default/files/2024-05/R155am2e.pdf'
+          prime_and_fetch UN_R155_Amendment3_2025.pdf \
+            'https://unece.org/transport/documents/2025/03/standards/addendum-154-un-regulation-no-155-amendment' \
+            'https://unece.org/sites/default/files/2025-03/R155am3e.pdf'
+          prime_and_fetch EU_2021_1228.pdf \
+            'https://eur-lex.europa.eu/eli/reg_impl/2021/1228/oj/eng' \
+            'https://eur-lex.europa.eu/eli/reg_impl/2021/1228/oj/eng/pdf'
+          prime_and_fetch DHS_Resilient_PNT_Best_Practices_2025.pdf \
+            'https://www.dhs.gov/science-and-technology/publication/pnt-best-practices-supporting-critical-infrastructure' \
+            'https://www.dhs.gov/sites/default/files/2025-02/25_0220_st_pnt_best_practices_ci.pdf'
+          prime_and_fetch US_DOT_PNT_Strategic_Plan_2025.pdf \
+            'https://www.transportation.gov/pnt/dot-positioning-navigation-timing-pnt-strategic-plan' \
+            'https://www.transportation.gov/sites/dot.gov/files/2025-01/Positioning%20Navigation%20and%20Timing%20Strategic%20Plan_v%20FINAL.pdf'
+
+          find out -maxdepth 1 -name '*.pdf' -type f -print0 | sort -z | xargs -0 -r sha256sum > out/SHA256SUMS.txt
+          cat out/FETCH_LOG.tsv
+          cat out/SHA256SUMS.txt
+
+      - name: Upload cross-runner result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GNSS_RECOVERY_${{ matrix.os }}
+          path: |
+            out/*.pdf
+            out/FETCH_LOG.tsv
+            out/SHA256SUMS.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+  chromium-session:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Install browser client
+        shell: bash
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null 2>&1
+
+      - name: Fetch official PDFs inside Chromium sessions
+        shell: bash
+        run: |
+          mkdir -p out
+          cat > recover.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import fs from 'fs';
+          const targets = [
+            ['UN_R155_Amendment2_2024.pdf','https://unece.org/transport/documents','https://unece.org/sites/default/files/2024-05/R155am2e.pdf'],
+            ['UN_R155_Amendment3_2025.pdf','https://unece.org/transport/documents/2025/03/standards/addendum-154-un-regulation-no-155-amendment','https://unece.org/sites/default/files/2025-03/R155am3e.pdf'],
+            ['EU_2021_1228.pdf','https://eur-lex.europa.eu/eli/reg_impl/2021/1228/oj/eng','https://eur-lex.europa.eu/eli/reg_impl/2021/1228/oj/eng/pdf'],
+            ['DHS_Resilient_PNT_Best_Practices_2025.pdf','https://www.dhs.gov/science-and-technology/publication/pnt-best-practices-supporting-critical-infrastructure','https://www.dhs.gov/sites/default/files/2025-02/25_0220_st_pnt_best_practices_ci.pdf'],
+            ['US_DOT_PNT_Strategic_Plan_2025.pdf','https://www.transportation.gov/pnt/dot-positioning-navigation-timing-pnt-strategic-plan','https://www.transportation.gov/sites/dot.gov/files/2025-01/Positioning%20Navigation%20and%20Timing%20Strategic%20Plan_v%20FINAL.pdf']
+          ];
+          const browser = await chromium.launch({headless:true});
+          const context = await browser.newContext({
+            userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36',
+            locale:'en-US'
+          });
+          let log='filename\tstatus\thttp_code\tbytes\turl\n';
+          for (const [name, landing, pdf] of targets) {
+            const page = await context.newPage();
+            let ok=false, status='-', bytes=0;
+            try {
+              await page.goto(landing,{waitUntil:'domcontentloaded',timeout:45000}).catch(()=>null);
+              await page.waitForTimeout(4000);
+              for (let i=0;i<4 && !ok;i++) {
+                const resp = await page.request.get(pdf,{headers:{referer:landing,accept:'application/pdf,*/*;q=0.8'},timeout:45000}).catch(()=>null);
+                if (resp) {
+                  status=String(resp.status());
+                  const body=await resp.body().catch(()=>Buffer.alloc(0));
+                  bytes=body.length;
+                  if (resp.ok() && bytes>1000 && body.subarray(0,5).toString()==='%PDF-') {
+                    fs.writeFileSync(`out/${name}`,body); ok=true; break;
+                  }
+                }
+                await page.waitForTimeout(8000);
+              }
+            } catch(e) {}
+            log += `${name}\t${ok?'PASS':'FAIL'}\t${status}\t${bytes}\t${pdf}\n`;
+            await page.close();
+          }
+          fs.writeFileSync('out/FETCH_LOG.tsv',log);
+          await browser.close();
+          EOF
+          node recover.mjs
+          find out -maxdepth 1 -name '*.pdf' -type f -print0 | sort -z | xargs -0 -r sha256sum > out/SHA256SUMS.txt
+          cat out/FETCH_LOG.tsv
+          cat out/SHA256SUMS.txt
+
+      - name: Upload Chromium result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GNSS_RECOVERY_chromium
+          path: |
+            out/*.pdf
+            out/FETCH_LOG.tsv
+            out/SHA256SUMS.txt
+          if-no-files-found: warn
+          retention-days: 7
