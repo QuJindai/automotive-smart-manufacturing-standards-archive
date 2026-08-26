@@ -34,3 +34,31 @@ jobs:
           code=$(curl -sS -o unauth.json -w '%{http_code}' -X POST "$BASE/executor/sessions/download-largefixture")
           test "$code" = '401'
           echo 'DOWNLOAD_DRIVE_EXECUTOR_AUTH_GUARD=PASS'
+
+  oauth-bootstrap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Assert OAuth starts through existing Notebook callback
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive-staging'
+          code=$(curl -sS -D headers.txt -o body.txt -w '%{http_code}' "$BASE/oauth/start")
+          test "$code" = '302'
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.parse import urlsplit, parse_qs
+          headers=Path('headers.txt').read_text(errors='replace').splitlines()
+          location=next(line.split(':',1)[1].strip() for line in headers if line.lower().startswith('location:'))
+          p=urlsplit(location)
+          assert p.scheme=='https' and p.netloc=='accounts.google.com' and p.path=='/o/oauth2/v2/auth', location
+          q=parse_qs(p.query)
+          assert q['redirect_uri']==['https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/gemini-notebook-mcp-prod/oauth/callback'], q
+          assert 'https://www.googleapis.com/auth/drive.file' in q['scope'][0].split(), q['scope'][0]
+          assert 'https://www.googleapis.com/auth/drive.readonly' in q['scope'][0].split(), q['scope'][0]
+          assert q.get('access_type')==['offline'] and q.get('prompt')==['consent']
+          assert q.get('state') and len(q['state'][0]) >= 32
+          assert 'client_secret' not in q
+          print('DOWNLOAD_DRIVE_OAUTH_BOOTSTRAP=PASS')
+          PY
