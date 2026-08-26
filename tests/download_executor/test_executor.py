@@ -13,8 +13,24 @@ from scripts.download_executor import (
     fallback_methods,
     redact_url,
     should_fallback,
+    upload_direct_resumable,
     validate_descriptor,
 )
+
+
+class FakeResponse:
+    def __init__(self, data: bytes, status: int = 200):
+        self._stream = io.BytesIO(data)
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self, size: int = -1):
+        return self._stream.read(size)
 
 
 class DownloadExecutorContracts(unittest.TestCase):
@@ -28,6 +44,21 @@ class DownloadExecutorContracts(unittest.TestCase):
         self.assertEqual(detect_magic(b"GGUF\x03\x00\x00\x00"), "gguf")
         self.assertEqual(detect_magic(b"PK\x03\x04abc"), "zip")
         self.assertEqual(detect_magic(b"{\"x\":1}"), "json")
+
+    def test_direct_gguf_upload_rejects_wrong_magic_before_pass(self):
+        asset = {
+            "asset_id": "a",
+            "filename": "model.gguf",
+            "source_url": "https://example.com/model.gguf",
+            "kind": "gguf",
+            "expected_size_bytes": 8,
+        }
+        with patch("scripts.download_executor.query_drive_offset", return_value=0), \
+             patch("scripts.download_executor._request", return_value=FakeResponse(b"NOTGGUF!")), \
+             patch("scripts.download_executor._put_drive_chunk", return_value=(8, {"id": "f", "name": "model.gguf"})):
+            result = upload_direct_resumable(asset, "https://upload.example/session", chunk_size=8)
+        self.assertEqual(result.status, "FAIL")
+        self.assertIn("magic mismatch", result.error or "")
 
     def test_chunk_ranges_are_contiguous_and_aligned(self):
         ranges = list(chunk_ranges(10 * 1024 * 1024 + 17, 4 * 1024 * 1024))
