@@ -10,6 +10,7 @@ from scripts.download_executor import (
     AssetResult,
     chunk_ranges,
     detect_magic,
+    fallback_methods,
     redact_url,
     should_fallback,
     validate_descriptor,
@@ -45,6 +46,16 @@ class DownloadExecutorContracts(unittest.TestCase):
         self.assertFalse(should_fallback(passed))
         failed = AssetResult(asset_id="a", filename="a.pdf", status="FAIL", bytes=0, sha256=None, method="native", error="403")
         self.assertTrue(should_fallback(failed))
+
+    def test_browser_hint_adds_browser_after_native_only(self):
+        asset = {"evidence": {"browser_hint": True, "fallback_chain": ["native", "browser", "alternate_egress"]}}
+        self.assertEqual(fallback_methods(asset), ["native", "browser", "alternate_egress"])
+        asset = {"evidence": {"browser_hint": False}}
+        self.assertEqual(fallback_methods(asset), ["native"])
+
+    def test_fallback_chain_is_deduplicated_and_native_first(self):
+        asset = {"evidence": {"browser_hint": True, "fallback_chain": ["browser", "native", "browser"]}}
+        self.assertEqual(fallback_methods(asset), ["native", "browser"])
 
 
 if __name__ == "__main__":
