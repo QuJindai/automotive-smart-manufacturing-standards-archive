@@ -1,0 +1,35 @@
+name: Download Plugin Staging Acceptance
+
+on:
+  push:
+    paths:
+      - '.github/workflows/download-plugin-staging-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Assert staging MCP contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging'
+          curl -fsS -X POST "$URL" -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"download-ci","version":"1"}}}' > init.json
+          curl -fsS -X POST "$URL" -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' > tools.json
+          python - <<'PY'
+          import json
+          init=json.load(open('init.json'))
+          tools=json.load(open('tools.json'))
+          assert init['result']['protocolVersion']=='2025-06-18'
+          assert init['result']['serverInfo']['name']=='下载'
+          names=[x['name'] for x in tools['result']['tools']]
+          assert names==['start_download','get_download','resume_download','retry_download','finalize_download'], names
+          print('DOWNLOAD_STAGING_MCP_CONTRACT=PASS')
+          PY
