@@ -1,0 +1,21 @@
+name: Download Executor CI
+
+on:
+  push:
+    paths:
+      - 'scripts/download_executor.py'
+      - 'tests/download_executor/**'
+      - '.github/workflows/download-executor-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run executor unit contracts
+        run: python -m unittest discover -s tests/download_executor -v
