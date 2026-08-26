@@ -62,3 +62,28 @@ jobs:
           assert 'client_secret' not in q
           print('DOWNLOAD_DRIVE_OAUTH_BOOTSTRAP=PASS')
           PY
+
+  adoption-inspection:
+    needs: oauth-bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Assert pending token adoption is safely inspectable
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive-staging'
+          curl -fsS "$BASE/oauth/adoption-plan" -o plan.json
+          python - <<'PY'
+          import json
+          p=json.load(open('plan.json'))
+          assert p['service']=='download-drive-staging'
+          assert p['bootstrap_pending'] is True
+          assert p['attempt_matches'] is True
+          assert p['current_has_drive_file'] is False
+          assert p['eligible_to_adopt'] is False
+          text=json.dumps(p).lower()
+          for secret in ('refresh_token','access_token','client_secret','ciphertext','session_url'):
+              assert secret not in text, secret
+          print('DOWNLOAD_DRIVE_ADOPTION_INSPECTION=PASS')
+          PY
