@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "profile_id": "P-AAS",
+  "profile_version": "2026.08-v1",
+  "baseline_date": "2026-08-26",
+  "name": "汽车制造装备开放数据与数字化工程交付Profile",
+  "scope": "资产身份、Submodel、语义/单位、API、安全、AASX工程交付",
+  "parameters": {
+    "required_languages": ["en", "zh-CN"],
+    "required_submodels": ["Status", "SoftwareVersion", "ProcessParameters", "Alarm", "Documentation"],
+    "required_capabilities": ["read_aas", "read_submodel", "query", "authorization", "signed", "aasx_delivery"],
+    "required_supplementary_files": ["manual.txt", "program-version-note.txt", "certificate.txt"]
+  },
+  "rules": [
+    {
+      "rule_id": "PF-AAS-001",
+      "target": "assetInformation.globalAssetId / specificAssetIds",
+      "mandatory": "至少一项必需",
+      "requirement": "至少存在一个可解析资产标识；优先跨系统全局ID。",
+      "source": {"source_id": "IDTA-01001-3.1.2", "locator": "AssetInformation / p.110", "origin_type": "source_plus_automotive_profile_extension"},
+      "test_ids": ["AAS-T003"],
+      "machine_checks": [{"evaluator": "aas_asset_identifier_presence"}]
+    },
+    {
+      "rule_id": "PF-AAS-002",
+      "target": "assetInformation.assetKind",
+      "mandatory": "必需",
+      "requirement": "明确类型资产与实例资产。",
+      "source": {"source_id": "IDTA-01001-3.1.2", "locator": "p.16-17", "origin_type": "source_derived"},
+      "test_ids": ["AAS-T002"],
+      "machine_checks": [{"evaluator": "aas_asset_kind", "expected": ["Type", "Instance"]}]
+    },
+    {
+      "rule_id": "PF-AAS-003",
+      "target": "Submodel semanticId",
+      "mandatory": "汽车Profile必需",
+      "requirement": "状态、维护、软件版本等子模型绑定统一语义ID。",
+      "source": {"source_id": "IDTA-01001-3.1.2", "locator": "Submodel / ConceptDescription", "origin_type": "source_plus_automotive_profile_extension"},
+      "test_ids": ["AAS-T004"],
+      "machine_checks": [{"evaluator": "required_submodel_semantic_id_presence"}]
+    },
+    {
+      "rule_id": "PF-AAS-004",
+      "target": "ConceptDescription + DataSpecificationIec61360",
+      "mandatory": "关键属性必需",
+      "requirement": "核心数据字段可追溯至语义定义。",
+      "source": {"source_id": "IDTA-01003-a-3.1.1", "locator": "p.14", "origin_type": "source_plus_automotive_profile_extension"},
+      "test_ids": ["AAS-T005"],
+      "machine_checks": [{"evaluator": "iec61360_dataspec_presence"}]
+    },
+    {
+      "rule_id": "PF-AAS-005",
+      "target": "preferredName",
+      "mandatory": "必需",
+      "requirement": "至少含英文；汽车Profile要求关键字段中英双语。",
+      "source": {"source_id": "IDTA-01003-a-3.1.1", "locator": "AASc-3a-002 p.18", "origin_type": "source_plus_automotive_profile_extension"},
+      "test_ids": ["AAS-T006"],
+      "machine_checks": [{"evaluator": "multilingual_preferred_name"}]
+    },
+    {
+      "rule_id": "PF-AAS-006",
+      "target": "unit + unitId",
+      "mandatory": "测量型字段必需",
+      "requirement": "unit与unitId同时设置时必须一致。",
+      "source": {"source_id": "IDTA-01003-a-3.1.1", "locator": "p.19", "origin_type": "source_derived"},
+      "test_ids": ["AAS-T007"],
+      "machine_checks": [{"evaluator": "unit_unitid_consistency"}]
+    },
+    {
+      "rule_id": "PF-AAS-007",
+      "target": "DataSpecificationUnitOfMeasurement",
+      "mandatory": "推荐/关键单位必需",
+      "requirement": "建立单位ID、symbol、定义和外部字典映射。",
+      "source": {"source_id": "IDTA-01003-b-3.0", "locator": "p.12-13", "origin_type": "source_plus_automotive_profile_extension"},
+      "test_ids": ["AAS-T008"],
+      "machine_checks": [{"evaluator": "uom_concept_description_resolvable"}]
+    },
+    {
+      "rule_id": "PF-AAS-008",
+      "target": "GetAssetAdministrationShellById",
+      "mandatory": "必需",
+      "requirement": "设备AAS必须可按ID读取。",
+      "source": {"source_id": "IDTA-01002-3.2", "locator": "p.110-117", "origin_type": "source_derived"},
+      "test_ids": ["AAS-T011"],
+      "machine_checks": [{"evaluator": "http_get_aas_by_id"}]
+    },
+    {
+      "rule_id": "PF-AAS-009",
+      "target": "GetSubmodelById",
+      "mandatory": "必需",
+      "requirement": "关键子模型必须独立可寻址。",
+      "source": {"source_id": "IDTA-01002-3.2", "locator": "p.117-123", "origin_type": "source_derived"},
+      "test_ids": ["AAS-T012"],
+      "machine_checks": [{"evaluator": "http_get_submodel_by_id"}]
+    },
+    {
+      "rule_id": "PF-AAS-010",
+      "target": "Query Language",
+      "mandatory": "规模化部署必需",
+      "requirement": "支持条件下推，避免全量读取。",
+      "source": {"source_id": "IDTA-01002-3.2", "locator": "p.17", "origin_type": "source_plus_automotive_profile_extension"},
+      "test_ids": ["AAS-T010"],
+      "machine_checks": [{"evaluator": "http_query"}]
+    },
+    {
+      "rule_id": "PF-AAS-011",
+      "target": "Access Token + ABAC",
+      "mandatory": "跨域访问必需",
+      "requirement": "授权判定可使用身份外属性。",
+      "source": {"source_id": "IDTA-01004-3.1", "locator": "p.7-8", "origin_type": "source_plus_automotive_profile_extension"},
+      "test_ids": ["AAS-T016"],
+      "machine_checks": [{"evaluator": "abac_decision"}]
+    },
+    {
+      "rule_id": "PF-AAS-012",
+      "target": "/$signed",
+      "mandatory": "高价值对象推荐/关键证据必需",
+      "requirement": "对程序、参数、证据对象提供完整性验证。",
+      "source": {"source_id": "IDTA-01004-3.1", "locator": "p.7,p.124", "origin_type": "source_plus_automotive_profile_extension"},
+      "test_ids": ["AAS-T017"],
+      "machine_checks": [{"evaluator": "jws_integrity"}]
+    },
+    {
+      "rule_id": "PF-AAS-013",
+      "target": "aasx-origin / relationships",
+      "mandatory": "FAT/SAT必需",
+      "requirement": "数字交付包必须可解析入口和内部关系。",
+      "source": {"source_id": "IDTA-01005-3.2", "locator": "p.12-14", "origin_type": "source_plus_automotive_profile_extension"},
+      "test_ids": ["AAS-T018"],
+      "machine_checks": [{"evaluator": "aasx_relationship_graph_validation"}]
+    },
+    {
+      "rule_id": "PF-AAS-014",
+      "target": "supplementary files",
+      "mandatory": "按交付清单必需",
+      "requirement": "手册、程序说明、证书等作为受控补充文件关联。",
+      "source": {"source_id": "IDTA-01005-3.2", "locator": "p.13,p.17-19", "origin_type": "source_plus_automotive_profile_extension"},
+      "test_ids": ["AAS-T019"],
+      "machine_checks": [{"evaluator": "aasx_supplementary_file_manifest_validation"}]
+    }
+  ]
+}
