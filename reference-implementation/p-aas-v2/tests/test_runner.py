@@ -3,6 +3,7 @@ from pathlib import Path
 from support import *
 from paas_v2.basyx import BasyxAdapter
 from paas_v2.runner import run_external
+from paas_v2.supplementary import build_supplementary_aasx
 
 class RunnerTests(unittest.TestCase):
     def test_fake_basyx_generates_core_pass_and_truthful_aasx_results(self):
@@ -22,4 +23,21 @@ class RunnerTests(unittest.TestCase):
                 caps={x['capability_id']:x for x in matrix}
                 self.assertEqual('SUPPORTED_VERIFIED',caps['environment_import']['status'])
                 self.assertEqual('SUPPORTED_VERIFIED',caps['aasx_package']['status'])
+        finally: fake.stop()
+
+    def test_fake_basyx_round_trips_three_supplementary_files(self):
+        fake=FakeBaSyx().start()
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                root=Path(td)
+                fixture, package, required=build_supplementary_aasx(ENV,root/'input')
+                result=run_external(BasyxAdapter(fake.base_url,{'implementation':'Eclipse BaSyx','version':'fake'}),fixture,root/'out',import_package=package.read_bytes())
+                self.assertEqual(0,result['required_failures'])
+                bundle=json.loads((root/'out'/'evidence-bundle.json').read_text())
+                by_id={x['test_id']:x for x in bundle['test_results']}
+                self.assertEqual('PASS',by_id['AAS-T018']['result'])
+                self.assertEqual('PASS',by_id['AAS-T019']['result'])
+                self.assertEqual(required,set(by_id['AAS-T019']['assertions'][0]['observed']['linked']))
+                summary=json.loads((root/'out'/'interop-summary.json').read_text())
+                self.assertEqual({'PASS':13,'FAIL':0,'BLOCKED':0,'NOT_APPLICABLE':6},summary['counts'])
         finally: fake.stop()
