@@ -114,6 +114,10 @@ class FAAASTCliTests(unittest.TestCase):
         aasx_result = next(x for x in bundle["test_results"] if x["test_id"] == "AAS-T018")
         self.assertNotIn("BaSyx", aasx_result["observations"])
         self.assertIn("FA3ST", aasx_result["observations"])
+        matrix = json.loads((out / "implementation-capability-matrix.json").read_text(encoding="utf-8"))
+        by_cap = {item["capability_id"]: item for item in matrix}
+        self.assertEqual("/api/v3.0/import", by_cap["environment_import"]["observed_endpoint"])
+        self.assertEqual("/api/v3.0/serialization", by_cap["aasx_package"]["observed_endpoint"])
 
 
 if __name__ == "__main__":
