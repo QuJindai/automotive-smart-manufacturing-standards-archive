@@ -60,13 +60,19 @@ def _relationship_targets(z: zipfile.ZipFile, rel_path: str, source_part: str) -
     return rows
 
 
+def _relationships_path_for_part(source_part: str) -> str:
+    directory = posixpath.dirname(source_part)
+    filename = posixpath.basename(source_part)
+    return posixpath.join(directory, "_rels", filename + ".rels")
+
+
 def validate_aasx(path: str | Path, required_supplementary: set[str]) -> list[CheckResult]:
     path = Path(path)
     results: list[CheckResult] = []
     try:
         with zipfile.ZipFile(path) as z:
             names = set(z.namelist())
-            required_core = {"[Content_Types].xml", "_rels/.rels", "aasx/aasx-origin", "aasx/_rels/aasx-origin.rels", "aasx/aas-environment.json", "aasx/_rels/aas-environment.json.rels"}
+            required_core = {"[Content_Types].xml", "_rels/.rels", "aasx/aasx-origin", "aasx/_rels/aasx-origin.rels"}
             missing_core = sorted(required_core - names)
             results.append(CheckResult("aasx-core", not missing_core, "core OPC/AASX parts present" if not missing_core else f"missing core parts: {missing_core}", missing_core))
             results.append(CheckResult("aasx-origin", "aasx/aasx-origin" in names, "aasx-origin present" if "aasx/aasx-origin" in names else "aasx-origin missing", None))
@@ -77,17 +83,28 @@ def validate_aasx(path: str | Path, required_supplementary: set[str]) -> list[Ch
                 results.append(CheckResult("aasx-origin-relationship", ok, f"origin relationship targets={origin_targets}", origin_targets))
             else:
                 results.append(CheckResult("aasx-origin-relationship", False, "root relationship file missing", None))
+
+            spec_targets: list[str] = []
             if "aasx/_rels/aasx-origin.rels" in names:
-                spec_targets = _relationship_targets(z, "aasx/_rels/aasx-origin.rels", "aasx/aasx-origin")
-                spec_targets = [target for typ, target in spec_targets if typ == AAS_SPEC_REL]
-                ok = spec_targets == ["aasx/aas-environment.json"] and all(t in names for t in spec_targets)
-                results.append(CheckResult("aasx-spec-relationship", ok, f"AAS environment targets={spec_targets}", spec_targets))
+                origin_rels = _relationship_targets(z, "aasx/_rels/aasx-origin.rels", "aasx/aasx-origin")
+                spec_targets = [target for typ, target in origin_rels if typ == AAS_SPEC_REL]
+                missing_spec_targets = sorted(t for t in spec_targets if t not in names)
+                ok = bool(spec_targets) and not missing_spec_targets
+                message = f"AAS environment targets={spec_targets}" if ok else f"AAS environment targets={spec_targets}, missing={missing_spec_targets}"
+                results.append(CheckResult("aasx-spec-relationship", ok, message, spec_targets))
             else:
                 results.append(CheckResult("aasx-spec-relationship", False, "aasx-origin relationships missing", None))
+
             linked: set[str] = set()
-            if "aasx/_rels/aas-environment.json.rels" in names:
-                linked = {posixpath.basename(target) for typ, target in _relationship_targets(z, "aasx/_rels/aas-environment.json.rels", "aasx/aas-environment.json") if typ == AAS_SUPPL_REL and target in names}
-            missing_files = sorted(required_supplementary - {p.name for p in map(Path, names) if str(p).startswith("aasx/suppl/")})
+            for spec_part in spec_targets:
+                rel_path = _relationships_path_for_part(spec_part)
+                if rel_path not in names:
+                    continue
+                for typ, target in _relationship_targets(z, rel_path, spec_part):
+                    if typ == AAS_SUPPL_REL and target in names:
+                        linked.add(posixpath.basename(target))
+            package_files = {posixpath.basename(name) for name in names if not name.endswith("/")}
+            missing_files = sorted(required_supplementary - package_files)
             missing_links = sorted(required_supplementary - linked)
             ok = not missing_files and not missing_links
             results.append(CheckResult("aasx-supplementary", ok, "supplementary files present and linked" if ok else f"missing files={missing_files}, missing links={missing_links}", {"linked": sorted(linked)}))
