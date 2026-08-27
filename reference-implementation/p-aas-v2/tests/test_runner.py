@@ -22,4 +22,7 @@ class RunnerTests(unittest.TestCase):
                 caps={x['capability_id']:x for x in matrix}
                 self.assertEqual('SUPPORTED_VERIFIED',caps['environment_import']['status'])
                 self.assertEqual('SUPPORTED_VERIFIED',caps['aasx_package']['status'])
+                for capability in ('read_aas','read_submodel','read_concept_description'):
+                    self.assertEqual('SUPPORTED_VERIFIED',caps[capability]['status'])
+                    self.assertEqual(200,caps[capability]['http_status'])
         finally: fake.stop()

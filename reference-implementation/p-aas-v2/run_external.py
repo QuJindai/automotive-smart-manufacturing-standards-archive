@@ -7,12 +7,13 @@ V1=ROOT.parent/'p-aas-v1'
 for p in (ROOT,V1):
     if str(p) not in sys.path: sys.path.insert(0,str(p))
 from paas_v2.basyx import BasyxAdapter
+from paas_v2.faaast import FaaastAdapter
 from paas_v2.runner import run_external
 
 
 def main():
     ap=argparse.ArgumentParser(description='Run P-AAS V2 against an external AAS implementation')
-    ap.add_argument('--adapter',choices=['basyx'],default='basyx')
+    ap.add_argument('--adapter',choices=['basyx','faaast'],default='basyx')
     ap.add_argument('--base-url',required=True)
     ap.add_argument('--fixture',required=True)
     ap.add_argument('--out',required=True)
@@ -20,7 +21,10 @@ def main():
     ap.add_argument('--authorization-enabled',action='store_true')
     args=ap.parse_args()
     fixture=json.loads(Path(args.fixture).read_text(encoding='utf-8'))
-    adapter=BasyxAdapter(args.base_url,{'implementation':'Eclipse BaSyx','version':args.target_version,'authorization_enabled':args.authorization_enabled})
+    if args.adapter == 'basyx':
+        adapter=BasyxAdapter(args.base_url,{'implementation':'Eclipse BaSyx','version':args.target_version,'authorization_enabled':args.authorization_enabled})
+    else:
+        adapter=FaaastAdapter(args.base_url,{'implementation':'Fraunhofer IOSB FA3ST Service','version':args.target_version,'authorization_enabled':False})
     result=run_external(adapter,fixture,Path(args.out))
     print('P_AAS_V2_REQUIRED_FAILURES='+str(result['required_failures']))
     return 1 if result['required_failures'] else 0

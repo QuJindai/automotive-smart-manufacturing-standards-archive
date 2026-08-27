@@ -61,21 +61,33 @@ def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: 
     imp=adapter.import_environment(fixture)
     (out_dir/"import-response.json").write_text(json.dumps({"success":imp.success,"route":imp.route,"responses":imp.responses,"reason":imp.reason},ensure_ascii=False,indent=2),encoding="utf-8")
     if not imp.success: raise RuntimeError("fixture import failed: "+imp.reason)
-    import_status=next((r.get("status") for r in imp.responses if 200 <= int(r.get("status",0)) < 300),None)
-    capabilities=_promote(capabilities,"environment_import",f"fixture import verified via {imp.route}",import_status,"/upload" if imp.route=="upload-json" else "repository-posts",["import-response.json"]); cmap=_cap_map(capabilities)
+    import_response=next((r for r in imp.responses if 200 <= int(r.get("status",0)) < 300),{})
+    import_status=import_response.get("status")
+    import_endpoint=import_response.get("route")
+    capabilities=_promote(capabilities,"environment_import",f"fixture import verified via {imp.route}",import_status,import_endpoint,["import-response.json"]); cmap=_cap_map(capabilities)
 
     aas_id=fixture["assetAdministrationShells"][0]["id"]; aas_r=adapter.read_aas(aas_id)
     if aas_r.status != 200 or not isinstance(aas_r.payload,dict): raise RuntimeError(f"AAS read failed: {aas_r.status}")
+    capabilities=_promote(capabilities,"read_aas","read_aas returned 200 for imported fixture",aas_r.status,None,["returned-environment.json"])
     submodels=[]
+    submodel_status=None
     for sm in fixture.get("submodels",[]):
         r=adapter.read_submodel(sm["id"])
         if r.status != 200 or not isinstance(r.payload,dict): raise RuntimeError(f"Submodel read failed {sm['id']}: {r.status}")
+        submodel_status=r.status
         submodels.append(r.payload)
+    if submodel_status is not None:
+        capabilities=_promote(capabilities,"read_submodel","all imported fixture submodels returned 200",submodel_status,None,["returned-environment.json"])
     cds=[]
+    cd_status=None
     for cd in fixture.get("conceptDescriptions",[]):
         r=adapter.read_concept_description(cd["id"])
         if r.status != 200 or not isinstance(r.payload,dict): raise RuntimeError(f"ConceptDescription read failed {cd['id']}: {r.status}")
+        cd_status=r.status
         cds.append(r.payload)
+    if cd_status is not None:
+        capabilities=_promote(capabilities,"read_concept_description","all imported fixture concept descriptions returned 200",cd_status,None,["returned-environment.json"])
+    cmap=_cap_map(capabilities)
     returned={"assetAdministrationShells":[aas_r.payload],"submodels":submodels,"conceptDescriptions":cds}; (out_dir/"returned-environment.json").write_text(json.dumps(returned,ensure_ascii=False,indent=2),encoding="utf-8")
     results=[AssessmentResult("AAS-T001","PASS","SUPPORTED_VERIFIED","repository-local P-AAS executable subset loaded",[],[])]
     sample=normalize_bundle(returned,{"capabilities":[c.capability_id for c in capabilities if c.status in {CapabilityStatus.SUPPORTED_VERIFIED,CapabilityStatus.SUPPORTED_NOT_VERIFIED}]})
@@ -102,8 +114,9 @@ def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: 
             artifact=_artifact(aasx_path,"ART-P-AAS-V2-AASX","application/asset-administration-shell-package+xml") if aasx_path.exists() else None
             assertions=[{"assertion_id":c.check_id,"status":"PASS" if c.passed else "FAIL","expected":"valid AASX core package","observed":c.observed,"message":c.message} for c in core_checks]
             if package_ok:
-                capabilities=_promote(capabilities,"aasx_package","/serialization returned valid AASX package",serialized.status,"/serialization",[aasx_path.name]); cmap=_cap_map(capabilities)
-                results.append(AssessmentResult("AAS-T018","PASS","SUPPORTED_VERIFIED","BaSyx /serialization returned a valid AASX core package",assertions,[artifact] if artifact else []))
+                capabilities=_promote(capabilities,"aasx_package","/serialization returned valid AASX package",serialized.status,None,[aasx_path.name]); cmap=_cap_map(capabilities)
+                implementation=str(adapter.target_metadata.get("implementation","external AAS"))
+                results.append(AssessmentResult("AAS-T018","PASS","SUPPORTED_VERIFIED",f"{implementation} /serialization returned a valid AASX core package",assertions,[artifact] if artifact else []))
                 required_supp=_supplementary_refs(fixture)
                 if not required_supp:
                     results.append(AssessmentResult("AAS-T019","NOT_APPLICABLE","SUPPORTED_VERIFIED","fixture_has_no_supplementary_files; AASX package serialization verified but supplementary linkage not exercised",[{"assertion_id":"supplementary-fixture","status":"NOT_APPLICABLE","expected":"supplementary files only when fixture contains File references","observed":[],"message":"fixture_has_no_supplementary_files"}],[artifact] if artifact else []))
