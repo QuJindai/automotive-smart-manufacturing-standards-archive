@@ -1,0 +1,35 @@
+name: Validate P0-08 conformity effectiveness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-conformity-assessment-v1/**'
+      - 'machine-readable/p0-08/**'
+      - 'machine-readable/v1/evidence.schema.json'
+      - 'docs/superpowers/specs/2026-08-28-p0-08-conformity-effectiveness-design.md'
+      - '.github/workflows/validate-p0-08-conformity-effectiveness.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-conformity-assessment-v1/**'
+      - 'machine-readable/p0-08/**'
+      - 'machine-readable/v1/evidence.schema.json'
+      - 'docs/superpowers/specs/2026-08-28-p0-08-conformity-effectiveness-design.md'
+      - '.github/workflows/validate-p0-08-conformity-effectiveness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  p0-08-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: P0-08 RED contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd reference-implementation/p-conformity-assessment-v1
+          PYTHONPATH=. python -m unittest discover -s tests -v
