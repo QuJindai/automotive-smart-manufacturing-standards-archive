@@ -6,12 +6,14 @@ on:
     paths:
       - 'reference-implementation/p-manufacturing-evidence-v1/**'
       - 'machine-readable/p0-06/**'
+      - 'machine-readable/v1/evidence.schema.json'
       - '.github/workflows/validate-p0-06-manufacturing-evidence.yml'
   push:
     branches: [main]
     paths:
       - 'reference-implementation/p-manufacturing-evidence-v1/**'
       - 'machine-readable/p0-06/**'
+      - 'machine-readable/v1/evidence.schema.json'
       - '.github/workflows/validate-p0-06-manufacturing-evidence.yml'
 
 permissions:
@@ -23,9 +25,201 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: P0-06 Python tests
+
+      - name: Python / Node contract and negative tests
         shell: bash
         run: |
           set -euo pipefail
           cd reference-implementation/p-manufacturing-evidence-v1
-          PYTHONPATH=. python -m unittest discover -s tests -v
+          PYTHONPATH=. python -m unittest discover -s tests -v 2>&1 | tee /tmp/pme-tests.log
+
+      - name: Execute both Golden evidence chains
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pme-single /tmp/pme-rework
+          python reference-implementation/p-manufacturing-evidence-v1/run_reference.py \
+            --package reference-implementation/p-manufacturing-evidence-v1/examples/eol-single-pass \
+            --out /tmp/pme-single | tee /tmp/pme-single.log
+          grep -q 'ME_REQUIRED_FAILURES=0' /tmp/pme-single.log
+          grep -q 'ME_PASS=18' /tmp/pme-single.log
+
+          python reference-implementation/p-manufacturing-evidence-v1/run_reference.py \
+            --package reference-implementation/p-manufacturing-evidence-v1/examples/eol-rework-retest \
+            --out /tmp/pme-rework | tee /tmp/pme-rework.log
+          grep -q 'ME_REQUIRED_FAILURES=0' /tmp/pme-rework.log
+          grep -q 'ME_PASS=18' /tmp/pme-rework.log
+
+      - name: Independent Node verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          node reference-implementation/p-manufacturing-evidence-v1/independent-verifier/verify.mjs \
+            reference-implementation/p-manufacturing-evidence-v1/examples/eol-single-pass \
+            | tee /tmp/pme-node-single.json
+          node reference-implementation/p-manufacturing-evidence-v1/independent-verifier/verify.mjs \
+            reference-implementation/p-manufacturing-evidence-v1/examples/eol-rework-retest \
+            | tee /tmp/pme-node-rework.json
+          python - <<'PY'
+          import json
+          for name in ('/tmp/pme-node-single.json','/tmp/pme-node-rework.json'):
+              data=json.load(open(name,encoding='utf-8'))
+              assert data['valid'] is True
+              assert data['record_hashes_valid'] is True
+              assert data['artifacts_valid'] is True
+              assert data['lineage_valid'] is True
+              assert data['release_valid'] is True
+          print('P0_06_NODE_CROSS_IMPLEMENTATION=PASS')
+          PY
+
+      - name: Execute full negative and tamper registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python reference-implementation/p-manufacturing-evidence-v1/run_negative_cases.py \
+            --out /tmp/pme-negative-summary.json | tee /tmp/pme-negative.log
+          grep -q 'ME_NEGATIVE_CASES=14' /tmp/pme-negative.log
+          grep -q 'ME_NEGATIVE_FALSE_PASSES=0' /tmp/pme-negative.log
+
+      - name: Validate standardized evidence package and privacy boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, re
+          outputs={}
+          for label,root in [('single',pathlib.Path('/tmp/pme-single')),('rework',pathlib.Path('/tmp/pme-rework'))]:
+              summary=json.loads((root/'validation-summary.json').read_text(encoding='utf-8'))
+              evidence=json.loads((root/'validator-evidence.json').read_text(encoding='utf-8'))
+              assert summary['counts']=={'PASS':18,'FAIL':0,'BLOCKED':0,'NOT_APPLICABLE':0}
+              assert summary['required_failures']==0
+              assert summary['certification_claim'] is False
+              assert evidence['environment']['certification_claim'] is False
+              assert [x['test_id'] for x in evidence['test_results']]==[f'ME-T{i:03d}' for i in range(1,19)]
+              assert all(x['result']=='PASS' for x in evidence['test_results'])
+              text='\n'.join(p.read_text(encoding='utf-8',errors='replace') for p in root.glob('*.json'))
+              lowered=text.lower()
+              assert 'drive.google.com' not in lowered
+              assert 'docs.google.com' not in lowered
+              assert 'access_token' not in lowered
+              assert 'refresh_token' not in lowered
+              outputs[label]={'counts':summary['counts'],'package_id':summary['package_id'],'node_verified':True}
+          negative=json.loads(pathlib.Path('/tmp/pme-negative-summary.json').read_text(encoding='utf-8'))
+          assert negative['case_count']==14 and negative['false_pass_count']==0
+          cross={'schema_version':'1.0','python_goldens':outputs,'negative_case_count':14,'negative_false_pass_count':0,'independent_node_verifier':'PASS','certification_claim':False}
+          pathlib.Path('/tmp/pme-cross-implementation-summary.json').write_text(json.dumps(cross,indent=2,sort_keys=True),encoding='utf-8')
+          print('P0_06_EVIDENCE_PACKAGE=PASS')
+          PY
+
+      - name: Upload one-day P0-06 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-06-manufacturing-evidence-${{ github.run_id }}
+          path: |
+            /tmp/pme-single/
+            /tmp/pme-rework/
+            /tmp/pme-tests.log
+            /tmp/pme-single.log
+            /tmp/pme-rework.log
+            /tmp/pme-node-single.json
+            /tmp/pme-node-rework.json
+            /tmp/pme-negative-summary.json
+            /tmp/pme-negative.log
+            /tmp/pme-cross-implementation-summary.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
+
+  v1-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: V1 tests and embedded 19/19
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s reference-implementation/p-aas-v1/tests -v
+          python reference-implementation/p-aas-v1/run_reference.py --out /tmp/p-aas-v1 | tee /tmp/p-aas-v1.log
+          grep -q 'AAS_PASS=19 AAS_FAIL=0 AAS_BLOCKED=0' /tmp/p-aas-v1.log
+
+  basyx-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start pinned BaSyx
+        working-directory: reference-implementation/p-aas-v2/basyx
+        run: docker compose up -d
+      - name: Wait for BaSyx OpenAPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import time, urllib.request
+          url='http://127.0.0.1:8081/v3/api-docs'; last=None
+          for _ in range(90):
+              try:
+                  with urllib.request.urlopen(url,timeout=3) as r:
+                      if r.status==200:
+                          print('P0_02_BASYX_READY=PASS'); raise SystemExit(0)
+              except Exception as exc: last=exc
+              time.sleep(2)
+          print('P0_02_BASYX_READY=FAIL',repr(last)); raise SystemExit(1)
+          PY
+      - name: Execute frozen BaSyx P-AAS gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python reference-implementation/p-aas-v2/run_external.py \
+            --adapter basyx \
+            --base-url http://127.0.0.1:8081 \
+            --fixture reference-implementation/p-aas-v2/basyx/fixture/environment.json \
+            --target-version 2.0.0-milestone-13 \
+            --out /tmp/p0-06-basyx-regression | tee /tmp/p0-06-basyx.log
+          grep -q 'P_AAS_V2_REQUIRED_FAILURES=0' /tmp/p0-06-basyx.log
+      - name: Stop BaSyx
+        if: always()
+        working-directory: reference-implementation/p-aas-v2/basyx
+        run: docker compose down -v --remove-orphans
+
+  faaast-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start pinned FA3ST 1.3.0
+        working-directory: reference-implementation/p-aas-v2/faaast
+        run: docker compose up -d
+      - name: Wait for FA3ST API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import time, urllib.request
+          url='http://127.0.0.1:8082/api/v3.0/shells?limit=1'; last=None
+          for _ in range(90):
+              try:
+                  with urllib.request.urlopen(url,timeout=3) as r:
+                      if r.status==200:
+                          print('P0_02_FAAAST_READY=PASS'); raise SystemExit(0)
+              except Exception as exc: last=exc
+              time.sleep(2)
+          print('P0_02_FAAAST_READY=FAIL',repr(last)); raise SystemExit(1)
+          PY
+      - name: Execute frozen FA3ST P-AAS gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python reference-implementation/p-aas-v2/run_external.py \
+            --adapter faaast \
+            --base-url http://127.0.0.1:8082 \
+            --fixture reference-implementation/p-aas-v2/basyx/fixture/environment.json \
+            --target-version 1.3.0 \
+            --out /tmp/p0-06-faaast-regression | tee /tmp/p0-06-faaast.log
+          grep -q 'P_AAS_V2_REQUIRED_FAILURES=0' /tmp/p0-06-faaast.log
+      - name: Stop FA3ST
+        if: always()
+        working-directory: reference-implementation/p-aas-v2/faaast
+        run: docker compose down -v --remove-orphans
