@@ -103,7 +103,8 @@ def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: 
             assertions=[{"assertion_id":c.check_id,"status":"PASS" if c.passed else "FAIL","expected":"valid AASX core package","observed":c.observed,"message":c.message} for c in core_checks]
             if package_ok:
                 capabilities=_promote(capabilities,"aasx_package","/serialization returned valid AASX package",serialized.status,"/serialization",[aasx_path.name]); cmap=_cap_map(capabilities)
-                results.append(AssessmentResult("AAS-T018","PASS","SUPPORTED_VERIFIED","BaSyx /serialization returned a valid AASX core package",assertions,[artifact] if artifact else []))
+                implementation=str(adapter.target_metadata.get("implementation","external AAS"))
+                results.append(AssessmentResult("AAS-T018","PASS","SUPPORTED_VERIFIED",f"{implementation} /serialization returned a valid AASX core package",assertions,[artifact] if artifact else []))
                 required_supp=_supplementary_refs(fixture)
                 if not required_supp:
                     results.append(AssessmentResult("AAS-T019","NOT_APPLICABLE","SUPPORTED_VERIFIED","fixture_has_no_supplementary_files; AASX package serialization verified but supplementary linkage not exercised",[{"assertion_id":"supplementary-fixture","status":"NOT_APPLICABLE","expected":"supplementary files only when fixture contains File references","observed":[],"message":"fixture_has_no_supplementary_files"}],[artifact] if artifact else []))
