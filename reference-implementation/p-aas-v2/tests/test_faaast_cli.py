@@ -110,6 +110,10 @@ class FAAASTCliTests(unittest.TestCase):
         self.assertIn("P_AAS_V2_REQUIRED_FAILURES=0", completed.stdout)
         summary = json.loads((out / "interop-summary.json").read_text(encoding="utf-8"))
         self.assertEqual({"FAIL": 0, "BLOCKED": 0}, {k: summary["counts"][k] for k in ("FAIL", "BLOCKED")})
+        bundle = json.loads((out / "evidence-bundle.json").read_text(encoding="utf-8"))
+        aasx_result = next(x for x in bundle["test_results"] if x["test_id"] == "AAS-T018")
+        self.assertNotIn("BaSyx", aasx_result["reason"])
+        self.assertIn("FA3ST", aasx_result["reason"])
 
 
 if __name__ == "__main__":
