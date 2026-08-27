@@ -112,7 +112,7 @@ class BasyxAdapter:
             return ImportResult(False, "none", [], "upload endpoint absent")
         mime = "application/asset-administration-shell-package"
         body, boundary = self._multipart(filename, package, mime)
-        ev = request("POST", self.base_url + "/upload", body, {"Content-Type": f"multipart/form-data; boundary={boundary}", "Accept": mime})
+        ev = request("POST", self.base_url + "/upload", body, {"Content-Type": f"multipart/form-data; boundary={boundary}", "Accept": "application/json"})
         responses = [{"route":"/upload","status":ev.status,"body":ev.body_text[:1000]}]
         return ImportResult(200 <= ev.status < 300, "upload-aasx", responses, "" if 200 <= ev.status < 300 else f"AASX upload failed: HTTP {ev.status}")
 
