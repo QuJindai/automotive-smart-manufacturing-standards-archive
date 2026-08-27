@@ -61,8 +61,10 @@ def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: 
     imp=adapter.import_environment(fixture)
     (out_dir/"import-response.json").write_text(json.dumps({"success":imp.success,"route":imp.route,"responses":imp.responses,"reason":imp.reason},ensure_ascii=False,indent=2),encoding="utf-8")
     if not imp.success: raise RuntimeError("fixture import failed: "+imp.reason)
-    import_status=next((r.get("status") for r in imp.responses if 200 <= int(r.get("status",0)) < 300),None)
-    capabilities=_promote(capabilities,"environment_import",f"fixture import verified via {imp.route}",import_status,"/upload" if imp.route=="upload-json" else "repository-posts",["import-response.json"]); cmap=_cap_map(capabilities)
+    import_response=next((r for r in imp.responses if 200 <= int(r.get("status",0)) < 300),{})
+    import_status=import_response.get("status")
+    import_endpoint=import_response.get("route")
+    capabilities=_promote(capabilities,"environment_import",f"fixture import verified via {imp.route}",import_status,import_endpoint,["import-response.json"]); cmap=_cap_map(capabilities)
 
     aas_id=fixture["assetAdministrationShells"][0]["id"]; aas_r=adapter.read_aas(aas_id)
     if aas_r.status != 200 or not isinstance(aas_r.payload,dict): raise RuntimeError(f"AAS read failed: {aas_r.status}")
@@ -102,7 +104,7 @@ def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: 
             artifact=_artifact(aasx_path,"ART-P-AAS-V2-AASX","application/asset-administration-shell-package+xml") if aasx_path.exists() else None
             assertions=[{"assertion_id":c.check_id,"status":"PASS" if c.passed else "FAIL","expected":"valid AASX core package","observed":c.observed,"message":c.message} for c in core_checks]
             if package_ok:
-                capabilities=_promote(capabilities,"aasx_package","/serialization returned valid AASX package",serialized.status,"/serialization",[aasx_path.name]); cmap=_cap_map(capabilities)
+                capabilities=_promote(capabilities,"aasx_package","/serialization returned valid AASX package",serialized.status,None,[aasx_path.name]); cmap=_cap_map(capabilities)
                 implementation=str(adapter.target_metadata.get("implementation","external AAS"))
                 results.append(AssessmentResult("AAS-T018","PASS","SUPPORTED_VERIFIED",f"{implementation} /serialization returned a valid AASX core package",assertions,[artifact] if artifact else []))
                 required_supp=_supplementary_refs(fixture)
