@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "registry_id": "P-CAE-AUTO-R14-CAC",
+  "registry_version": "1.0",
+  "profile_id": "P-CAE-AUTO-R14",
+  "criteria": [
+    {"requirement_id":"CAE-R001","proof_type":"ATTESTATION","test_id":"CAE-T001","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"assessment identity complete","evidence_requirements":["PACKAGE_FIELDS"]},
+    {"requirement_id":"CAE-R002","proof_type":"MODEL","test_id":"CAE-T002","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"CAC binding complete and identifiers unique","evidence_requirements":["CAC_REGISTRY"]},
+    {"requirement_id":"CAE-R003","proof_type":"AUTOMATED_TEST","test_id":"CAE-T003","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"all evidence URI/size/SHA256 valid","evidence_requirements":["EVIDENCE_FILES"]},
+    {"requirement_id":"CAE-R004","proof_type":"ATTESTATION","test_id":"CAE-T004","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"proof types and required proof set valid","evidence_requirements":["PROOF_TYPES"]},
+    {"requirement_id":"CAE-R005","proof_type":"AUTOMATED_TEST","test_id":"CAE-T005","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"automatable requirements executed automatically","evidence_requirements":["EXECUTION_SUMMARY"]},
+    {"requirement_id":"CAE-R006","proof_type":"ATTESTATION","test_id":"CAE-T006","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"assessor role allowed for level","evidence_requirements":["ASSESSOR_ROLE"]},
+    {"requirement_id":"CAE-R007","proof_type":"EXCEPTION_RECORD","test_id":"CAE-T007","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"N/A only when permitted and justified","evidence_requirements":["NA_RECORDS"]},
+    {"requirement_id":"CAE-R008","proof_type":"EXCEPTION_RECORD","test_id":"CAE-T008","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"exceptions cannot mask required FAIL/BLOCKED","evidence_requirements":["EXCEPTION_RECORDS"]},
+    {"requirement_id":"CAE-R009","proof_type":"PROFILE_DECLARATION","test_id":"CAE-T009","automation_flag":true,"required":true,"applicability_rule":"C0_RULE","decision_rule":"C0 supplier declaration complete when applicable","evidence_requirements":["MODEL","PROFILE_DECLARATION","AUTOMATED_TEST"]},
+    {"requirement_id":"CAE-R010","proof_type":"LAB_REPORT","test_id":"CAE-T010","automation_flag":true,"required":true,"applicability_rule":"LEVEL_GTE_C1","decision_rule":"valid C0 predecessor and C1 lab/TCK proof","evidence_requirements":["C0_PREDECESSOR","LAB_REPORT"]},
+    {"requirement_id":"CAE-R011","proof_type":"FAT_SAT_EVIDENCE","test_id":"CAE-T011","automation_flag":true,"required":true,"applicability_rule":"LEVEL_GTE_C2","decision_rule":"valid C1 predecessor, project binding and P0-06 proof","evidence_requirements":["C1_PREDECESSOR","PROJECT_BINDING","P0_06_EVIDENCE"]},
+    {"requirement_id":"CAE-R012","proof_type":"CONTINUOUS_EVIDENCE","test_id":"CAE-T012","automation_flag":true,"required":true,"applicability_rule":"C3","decision_rule":"valid C2 predecessor and sufficient observation coverage","evidence_requirements":["C2_PREDECESSOR","CONTINUOUS_EVIDENCE"]},
+    {"requirement_id":"CAE-R013","proof_type":"MODEL","test_id":"CAE-T013","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"version/profile/program/parameter/upstream baseline bound","evidence_requirements":["BASELINE"]},
+    {"requirement_id":"CAE-R014","proof_type":"CONTINUOUS_EVIDENCE","test_id":"CAE-T014","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"material drift detection deterministic","evidence_requirements":["DRIFT_STATE"]},
+    {"requirement_id":"CAE-R015","proof_type":"CONTINUOUS_EVIDENCE","test_id":"CAE-T015","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"reevaluation trigger deterministic","evidence_requirements":["REEVALUATION_STATE"]},
+    {"requirement_id":"CAE-R016","proof_type":"ATTESTATION","test_id":"CAE-T016","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"validity/effectivity/revocation/supersession consistent","evidence_requirements":["VALIDITY"]},
+    {"requirement_id":"CAE-R017","proof_type":"AUTOMATED_TEST","test_id":"CAE-T017","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"overall decision deterministic; no weighted score","evidence_requirements":["REQUIRED_OUTCOMES"]},
+    {"requirement_id":"CAE-R018","proof_type":"AUTOMATED_TEST","test_id":"CAE-T018","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"effectiveness vector reproducible from counters","evidence_requirements":["EFFECTIVENESS_SOURCES"]},
+    {"requirement_id":"CAE-R019","proof_type":"ATTESTATION","test_id":"CAE-T019","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"Requirement→Test→Proof/Evidence trace complete","evidence_requirements":["TRACE_BINDINGS"]},
+    {"requirement_id":"CAE-R020","proof_type":"ATTESTATION","test_id":"CAE-T020","automation_flag":true,"required":true,"applicability_rule":"ALL","decision_rule":"truthful conformity statement; certification_claim=false","evidence_requirements":["CONFORMITY_STATEMENT"]}
+  ]
+}
