@@ -29,10 +29,18 @@ def _fake_aasx(environment: dict) -> bytes:
     return buffer.getvalue()
 
 
+def _zip_from_multipart(data: bytes) -> bytes | None:
+    start=data.find(b'PK\x03\x04'); eocd=data.rfind(b'PK\x05\x06')
+    if start < 0 or eocd < 0 or eocd + 22 > len(data): return None
+    comment_len=int.from_bytes(data[eocd+20:eocd+22],'little')
+    end=eocd+22+comment_len
+    return data[start:end] if end <= len(data) else None
+
+
 class FakeBaSyx:
     def __init__(self, openapi_base64=False):
         self.env=json.loads(json.dumps(ENV)); self.openapi_base64=openapi_base64; self.server=None; self.thread=None; self.base_url=None
-        self.last_upload_accept=None; self.last_upload_contains_zip=False
+        self.last_upload_accept=None; self.last_upload_contains_zip=False; self.uploaded_aasx=None
     def start(self):
         env=self.env; openapi_base64=self.openapi_base64; owner=self
         class Handler(BaseHTTPRequestHandler):
@@ -56,7 +64,7 @@ class FakeBaSyx:
                     import base64
                     token=query['aasIds'][0]; raw=base64.urlsafe_b64decode(token+'='*((4-len(token)%4)%4)).decode()
                     if raw!=env['assetAdministrationShells'][0]['id']: return self._json(404,{'error':'unknown aas'})
-                    return self._bytes(200,_fake_aasx(env),'application/asset-administration-shell-package+xml')
+                    return self._bytes(200,owner.uploaded_aasx or _fake_aasx(env),'application/asset-administration-shell-package+xml')
                 for prefix,key in (('/shells/','assetAdministrationShells'),('/submodels/','submodels'),('/concept-descriptions/','conceptDescriptions')):
                     if split.path.startswith(prefix):
                         import base64
@@ -69,8 +77,15 @@ class FakeBaSyx:
                 split=urlsplit(self.path); length=int(self.headers.get('Content-Length','0')); data=self.rfile.read(length) if length else b''
                 if split.path=='/upload':
                     owner.last_upload_accept=self.headers.get('Accept')
-                    owner.last_upload_contains_zip=b'PK' in data
-                    return self._json(200,{'uploaded':owner.last_upload_contains_zip}) if owner.last_upload_contains_zip else self._json(400,{'error':'missing zip payload'})
+                    package=_zip_from_multipart(data); owner.last_upload_contains_zip=package is not None
+                    if package is None: return self._json(400,{'error':'missing zip payload'})
+                    try:
+                        with zipfile.ZipFile(io.BytesIO(package)) as z:
+                            loaded=json.loads(z.read('aasx/aas-environment.json').decode('utf-8'))
+                    except Exception as exc:
+                        return self._json(400,{'error':f'bad aasx: {exc}'})
+                    env.clear(); env.update(loaded); owner.uploaded_aasx=package
+                    return self._json(200,{'uploaded':True})
                 if split.path in ('/shells','/submodels','/concept-descriptions'):
                     try: obj=json.loads(data or b'{}')
                     except Exception: return self._json(400,{'error':'bad json'})
