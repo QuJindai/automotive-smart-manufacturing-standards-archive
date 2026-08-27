@@ -44,12 +44,13 @@ The validator MUST derive a deterministic graph from records. Required edge type
 - `GENERATED_BY`
 - `USES_PROGRAM`
 - `USES_PARAMETER_SET`
+- `HAS_RAW_ARTIFACT`
 - `DERIVED_FROM`
 - `RETEST_OF`
 - `REPAIR_OF`
 - `RELEASES`
 
-The graph must permit deterministic queries from final release evidence back to source record, program/version, parameter set, equipment and raw artifact.
+The graph must permit deterministic queries from final release evidence back to source record, program/version, parameter set, equipment and raw artifact. Artifact traceability MUST be represented by `HAS_RAW_ARTIFACT`; it must not rely on a non-graph side channel.
 
 ## 4. EOL Detection Profile V1
 
@@ -85,7 +86,7 @@ P-ME V1 defines 18 executable tests:
 - `ME-T013` attempt numbers are contiguous and monotonic.
 - `ME-T014` retest/rework relation semantics are legal.
 - `ME-T015` release has a valid PASS predecessor for the same subject/operation.
-- `ME-T016` trace graph is complete for mandatory provenance edges.
+- `ME-T016` trace graph is complete for mandatory provenance edges, including raw artifacts.
 - `ME-T017` trace query from release to source/program/parameter/artifact succeeds.
 - `ME-T018` package round-trip is deterministic and long-term readable using only JSON + raw artifacts.
 
@@ -114,7 +115,7 @@ Every executed validation writes:
 - `evidence-package-manifest.json`
 - `validator-evidence.json`
 
-`validator-evidence.json` records profile/schema/test-kit versions, test results, input package hash, generated outputs and their SHA-256 values. It MUST set `certification_claim=false`.
+`validator-evidence.json` records profile/schema/test-kit versions, test results, input package hash, generated outputs and their SHA-256 values. It MUST set `certification_claim=false` and MUST use the repository-wide `machine-readable/v1/evidence.schema.json` bundle vocabulary rather than inventing a parallel conformance-evidence format. The generic evidence schema may be extended only compatibly to admit the `ME-Tnnn` test-id namespace.
 
 ## 8. Acceptance gate
 
