@@ -62,24 +62,30 @@ jobs:
               time.sleep(2)
           print('BASYX_OPENAPI_READY=FAIL',repr(last)); raise SystemExit(1)
           PY
-      - name: Run external P-AAS V2 against BaSyx milestone-13
+      - name: Run external P-AAS V2 supplementary round-trip against BaSyx milestone-13
         shell: bash
         run: |
           set -euo pipefail
           rm -rf /tmp/p-aas-v2-basyx
-          python reference-implementation/p-aas-v2/run_external.py --adapter basyx --base-url http://127.0.0.1:8081 --fixture reference-implementation/p-aas-v2/basyx/fixture/environment.json --target-version 2.0.0-milestone-13 --out /tmp/p-aas-v2-basyx | tee /tmp/p-aas-v2-basyx.log
+          python reference-implementation/p-aas-v2/run_external.py --adapter basyx --base-url http://127.0.0.1:8081 --fixture reference-implementation/p-aas-v2/basyx/fixture/environment.json --target-version 2.0.0-milestone-13 --supplementary-aasx --out /tmp/p-aas-v2-basyx | tee /tmp/p-aas-v2-basyx.log
           grep -q 'P_AAS_V2_REQUIRED_FAILURES=0' /tmp/p-aas-v2-basyx.log
           python - <<'PY'
           import json,pathlib
-          out=pathlib.Path('/tmp/p-aas-v2-basyx'); summary=json.loads((out/'interop-summary.json').read_text(encoding='utf-8')); matrix=json.loads((out/'implementation-capability-matrix.json').read_text(encoding='utf-8')); bundle=json.loads((out/'evidence-bundle.json').read_text(encoding='utf-8'))
+          out=pathlib.Path('/tmp/p-aas-v2-basyx')
+          summary=json.loads((out/'interop-summary.json').read_text(encoding='utf-8'))
+          matrix=json.loads((out/'implementation-capability-matrix.json').read_text(encoding='utf-8'))
+          bundle=json.loads((out/'evidence-bundle.json').read_text(encoding='utf-8'))
           assert summary['certification_claim'] is False
           assert len(bundle['test_results']) == 19
           assert [r['test_id'] for r in bundle['test_results']] == [f'AAS-T{i:03d}' for i in range(1,20)]
-          required={f'AAS-T{i:03d}' for i in list(range(1,10))+[11,12]}
-          assert all(r['result']=='PASS' for r in bundle['test_results'] if r['test_id'] in required)
-          assert any(r['result']=='NOT_APPLICABLE' for r in bundle['test_results'])
+          by_id={r['test_id']:r for r in bundle['test_results']}
+          required={f'AAS-T{i:03d}' for i in list(range(1,10))+[11,12,18,19]}
+          assert all(by_id[test_id]['result']=='PASS' for test_id in required)
+          assert summary['counts'] == {'PASS':13,'FAIL':0,'BLOCKED':0,'NOT_APPLICABLE':6}
+          assert set(by_id['AAS-T019']['assertions'][0]['observed']['linked']) == {'manual.txt','program-version-note.txt','certificate.txt'}
           assert any(c['status']=='UNSUPPORTED_WITH_EVIDENCE' for c in matrix)
-          print('P_AAS_V2_BASYX_CORE=PASS'); print('P_AAS_V2_COUNTS='+json.dumps(summary['counts'],sort_keys=True))
+          print('P_AAS_V2_BASYX_SUPPLEMENTARY=PASS')
+          print('P_AAS_V2_COUNTS='+json.dumps(summary['counts'],sort_keys=True))
           PY
       - name: Capture BaSyx logs
         if: always()
