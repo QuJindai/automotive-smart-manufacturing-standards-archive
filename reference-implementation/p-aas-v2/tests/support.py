@@ -32,8 +32,9 @@ def _fake_aasx(environment: dict) -> bytes:
 class FakeBaSyx:
     def __init__(self, openapi_base64=False):
         self.env=json.loads(json.dumps(ENV)); self.openapi_base64=openapi_base64; self.server=None; self.thread=None; self.base_url=None
+        self.last_upload_accept=None; self.last_upload_contains_zip=False
     def start(self):
-        env=self.env; openapi_base64=self.openapi_base64
+        env=self.env; openapi_base64=self.openapi_base64; owner=self
         class Handler(BaseHTTPRequestHandler):
             def log_message(self,*args): pass
             def _bytes(self,status,data,content_type):
@@ -66,6 +67,10 @@ class FakeBaSyx:
                 return self._json(404,{'error':'no route'})
             def do_POST(self):
                 split=urlsplit(self.path); length=int(self.headers.get('Content-Length','0')); data=self.rfile.read(length) if length else b''
+                if split.path=='/upload':
+                    owner.last_upload_accept=self.headers.get('Accept')
+                    owner.last_upload_contains_zip=b'PK' in data
+                    return self._json(200,{'uploaded':owner.last_upload_contains_zip}) if owner.last_upload_contains_zip else self._json(400,{'error':'missing zip payload'})
                 if split.path in ('/shells','/submodels','/concept-descriptions'):
                     try: obj=json.loads(data or b'{}')
                     except Exception: return self._json(400,{'error':'bad json'})
