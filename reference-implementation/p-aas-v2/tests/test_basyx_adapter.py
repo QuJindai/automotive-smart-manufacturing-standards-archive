@@ -1,5 +1,6 @@
 import json, unittest, zipfile, io
 from support import *
+from support import _fake_aasx
 from paas_v2.basyx import BasyxAdapter
 from paas_v2.external import CapabilityStatus
 
