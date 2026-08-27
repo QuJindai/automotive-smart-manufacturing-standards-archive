@@ -7,6 +7,7 @@ on:
       - 'reference-implementation/p-manufacturing-evidence-v1/**'
       - 'machine-readable/p0-06/**'
       - 'machine-readable/v1/evidence.schema.json'
+      - 'docs/superpowers/specs/2026-08-27-p0-06-manufacturing-evidence-chain-design.md'
       - '.github/workflows/validate-p0-06-manufacturing-evidence.yml'
   push:
     branches: [main]
@@ -14,6 +15,7 @@ on:
       - 'reference-implementation/p-manufacturing-evidence-v1/**'
       - 'machine-readable/p0-06/**'
       - 'machine-readable/v1/evidence.schema.json'
+      - 'docs/superpowers/specs/2026-08-27-p0-06-manufacturing-evidence-chain-design.md'
       - '.github/workflows/validate-p0-06-manufacturing-evidence.yml'
 
 permissions:
@@ -86,7 +88,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, pathlib, re
+          import json, pathlib
           outputs={}
           for label,root in [('single',pathlib.Path('/tmp/pme-single')),('rework',pathlib.Path('/tmp/pme-rework'))]:
               summary=json.loads((root/'validation-summary.json').read_text(encoding='utf-8'))
@@ -111,6 +113,44 @@ jobs:
           print('P0_06_EVIDENCE_PACKAGE=PASS')
           PY
 
+      - name: Stage immutable inputs and build artifact index
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pme-inputs /tmp/pme-machine-readable /tmp/pme-standard
+          mkdir -p /tmp/pme-inputs /tmp/pme-machine-readable /tmp/pme-standard
+          cp -a reference-implementation/p-manufacturing-evidence-v1/examples/eol-single-pass /tmp/pme-inputs/eol-single-pass
+          cp -a reference-implementation/p-manufacturing-evidence-v1/examples/eol-rework-retest /tmp/pme-inputs/eol-rework-retest
+          cp reference-implementation/p-manufacturing-evidence-v1/fixtures/negative-cases.json /tmp/pme-inputs/negative-cases.json
+          cp machine-readable/p0-06/manufacturing-evidence-v1.schema.json /tmp/pme-machine-readable/
+          cp machine-readable/p0-06/eol-profile-v1.json /tmp/pme-machine-readable/
+          cp machine-readable/p0-06/conformance-criteria-v1.json /tmp/pme-machine-readable/
+          cp machine-readable/v1/evidence.schema.json /tmp/pme-machine-readable/common-conformity-evidence.schema.json
+          cp docs/superpowers/specs/2026-08-27-p0-06-manufacturing-evidence-chain-design.md /tmp/pme-standard/
+          cp reference-implementation/p-manufacturing-evidence-v1/README.md /tmp/pme-standard/
+          python - <<'PY'
+          import hashlib,json,pathlib
+          roots=[
+              pathlib.Path('/tmp/pme-single'),pathlib.Path('/tmp/pme-rework'),
+              pathlib.Path('/tmp/pme-inputs'),pathlib.Path('/tmp/pme-machine-readable'),pathlib.Path('/tmp/pme-standard')]
+          entries=[]
+          for root in roots:
+              for path in sorted(p for p in root.rglob('*') if p.is_file()):
+                  data=path.read_bytes()
+                  try: relative=str(path.relative_to('/tmp'))
+                  except ValueError: relative=str(path)
+                  entries.append({'path':relative,'size_bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+                  if path.suffix.lower() in {'.json','.md','.txt','.log'}:
+                      text=data.decode('utf-8',errors='replace').lower()
+                      assert 'drive.google.com' not in text
+                      assert 'docs.google.com' not in text
+                      assert 'access_token' not in text
+                      assert 'refresh_token' not in text
+          index={'schema_version':'1.0','self_contained':True,'file_count':len(entries),'files':entries,'certification_claim':False}
+          pathlib.Path('/tmp/pme-artifact-index.json').write_text(json.dumps(index,indent=2,sort_keys=True),encoding='utf-8')
+          print('P0_06_SELF_CONTAINED_ARTIFACT=PASS files='+str(len(entries)))
+          PY
+
       - name: Upload one-day P0-06 evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -119,6 +159,9 @@ jobs:
           path: |
             /tmp/pme-single/
             /tmp/pme-rework/
+            /tmp/pme-inputs/
+            /tmp/pme-machine-readable/
+            /tmp/pme-standard/
             /tmp/pme-tests.log
             /tmp/pme-single.log
             /tmp/pme-rework.log
@@ -127,6 +170,7 @@ jobs:
             /tmp/pme-negative-summary.json
             /tmp/pme-negative.log
             /tmp/pme-cross-implementation-summary.json
+            /tmp/pme-artifact-index.json
           if-no-files-found: error
           retention-days: 1
           compression-level: 6
