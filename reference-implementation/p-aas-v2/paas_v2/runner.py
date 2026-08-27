@@ -68,16 +68,26 @@ def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: 
 
     aas_id=fixture["assetAdministrationShells"][0]["id"]; aas_r=adapter.read_aas(aas_id)
     if aas_r.status != 200 or not isinstance(aas_r.payload,dict): raise RuntimeError(f"AAS read failed: {aas_r.status}")
+    capabilities=_promote(capabilities,"read_aas","read_aas returned 200 for imported fixture",aas_r.status,None,["returned-environment.json"])
     submodels=[]
+    submodel_status=None
     for sm in fixture.get("submodels",[]):
         r=adapter.read_submodel(sm["id"])
         if r.status != 200 or not isinstance(r.payload,dict): raise RuntimeError(f"Submodel read failed {sm['id']}: {r.status}")
+        submodel_status=r.status
         submodels.append(r.payload)
+    if submodel_status is not None:
+        capabilities=_promote(capabilities,"read_submodel","all imported fixture submodels returned 200",submodel_status,None,["returned-environment.json"])
     cds=[]
+    cd_status=None
     for cd in fixture.get("conceptDescriptions",[]):
         r=adapter.read_concept_description(cd["id"])
         if r.status != 200 or not isinstance(r.payload,dict): raise RuntimeError(f"ConceptDescription read failed {cd['id']}: {r.status}")
+        cd_status=r.status
         cds.append(r.payload)
+    if cd_status is not None:
+        capabilities=_promote(capabilities,"read_concept_description","all imported fixture concept descriptions returned 200",cd_status,None,["returned-environment.json"])
+    cmap=_cap_map(capabilities)
     returned={"assetAdministrationShells":[aas_r.payload],"submodels":submodels,"conceptDescriptions":cds}; (out_dir/"returned-environment.json").write_text(json.dumps(returned,ensure_ascii=False,indent=2),encoding="utf-8")
     results=[AssessmentResult("AAS-T001","PASS","SUPPORTED_VERIFIED","repository-local P-AAS executable subset loaded",[],[])]
     sample=normalize_bundle(returned,{"capabilities":[c.capability_id for c in capabilities if c.status in {CapabilityStatus.SUPPORTED_VERIFIED,CapabilityStatus.SUPPORTED_NOT_VERIFIED}]})
