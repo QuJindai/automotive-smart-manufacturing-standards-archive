@@ -1,1 +1,188 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://github.com/QuJindai/automotive-smart-manufacturing-standards-archive/machine-readable/p0-06/manufacturing-evidence-v1.schema.json","title":"P-ME V1 Manufacturing Evidence Package","type":"object","additionalProperties":false,"required":["schema_version","package_id","profile","created_at","records"],"properties":{"schema_version":{"const":"1.0"},"package_id":{"type":"string","minLength":1},"profile":{"type":"object","required":["id","version"],"properties":{"id":{"type":"string"},"version":{"type":"string"}},"additionalProperties":false},"created_at":{"type":"string","format":"date-time"},"records":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/record"}}},"$defs":{"record":{"type":"object","additionalProperties":false,"required":["evidence_id","schema_version","profile_id","profile_version","subject","source","process_context","measurement","execution_context","time","lineage","raw_artifacts","disposition","integrity"],"properties":{"evidence_id":{"type":"string","minLength":1},"schema_version":{"const":"1.0"},"profile_id":{"type":"string"},"profile_version":{"type":"string"},"subject":{"type":"object"},"source":{"type":"object"},"process_context":{"type":"object"},"measurement":{"type":"object"},"execution_context":{"type":"object"},"time":{"type":"object"},"lineage":{"type":"object"},"raw_artifacts":{"type":"array","minItems":1},"disposition":{"type":"object"},"integrity":{"type":"object"}}}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/QuJindai/automotive-smart-manufacturing-standards-archive/machine-readable/p0-06/manufacturing-evidence-v1.schema.json",
+  "title": "P-ME V1 Manufacturing Evidence Package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "package_id", "profile", "created_at", "records"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "package_id": {"type": "string", "minLength": 1},
+    "profile": {"$ref": "#/$defs/profile"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "records": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/record"}}
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_id", "subject_type", "operation_id"],
+      "properties": {
+        "subject_id": {"type": "string", "minLength": 1},
+        "subject_type": {"enum": ["VEHICLE", "PART", "ASSEMBLY", "PROCESS_OBJECT"]},
+        "operation_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system_id", "equipment_id", "source_record_id"],
+      "properties": {
+        "system_id": {"type": "string", "minLength": 1},
+        "equipment_id": {"type": "string", "minLength": 1},
+        "source_record_id": {"type": "string", "minLength": 1},
+        "acquisition_id": {"type": ["string", "null"]}
+      }
+    },
+    "process_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["process_id", "station_id", "equipment_id"],
+      "properties": {
+        "process_id": {"type": "string", "minLength": 1},
+        "station_id": {"type": "string", "minLength": 1},
+        "equipment_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "uncertainty": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "unit", "method"],
+          "properties": {
+            "value": {"type": "number", "minimum": 0},
+            "unit": {"type": "string", "minLength": 1},
+            "method": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["not_applicable_reason"],
+          "properties": {
+            "not_applicable_reason": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["characteristic_id", "raw_value", "result_value", "unit", "judgment", "uncertainty"],
+      "properties": {
+        "characteristic_id": {"type": "string", "minLength": 1},
+        "raw_value": {},
+        "result_value": {},
+        "unit": {"type": "string", "minLength": 1},
+        "judgment": {"enum": ["PASS", "FAIL", "REWORK", "RELEASED"]},
+        "uncertainty": {"$ref": "#/$defs/uncertainty"}
+      }
+    },
+    "execution_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["program_id", "program_version", "parameter_set_id", "parameter_hash", "tool_state"],
+      "properties": {
+        "program_id": {"type": "string", "minLength": 1},
+        "program_version": {"type": "string", "minLength": 1},
+        "parameter_set_id": {"type": "string", "minLength": 1},
+        "parameter_hash": {"$ref": "#/$defs/sha256"},
+        "tool_state": {"type": "string", "minLength": 1}
+      }
+    },
+    "time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_time", "collected_time"],
+      "properties": {
+        "event_time": {"type": "string", "format": "date-time"},
+        "collected_time": {"type": "string", "format": "date-time"}
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt_no", "relation", "parent_evidence_ids", "previous_record_hash"],
+      "properties": {
+        "attempt_no": {"type": "integer", "minimum": 1},
+        "relation": {"enum": ["INITIAL", "REPAIR_OF", "RETEST_OF", "RELEASES"]},
+        "parent_evidence_ids": {"type": "array", "maxItems": 1, "items": {"type": "string", "minLength": 1}},
+        "previous_record_hash": {
+          "oneOf": [
+            {"$ref": "#/$defs/sha256"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "uri", "mime_type", "size_bytes", "sha256"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "uri": {"type": "string", "minLength": 1},
+        "mime_type": {"type": "string", "minLength": 1},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "raw_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/artifact"}
+    },
+    "disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "rule_id"],
+      "properties": {
+        "decision": {"enum": ["PASS", "FAIL", "REWORK", "RETEST", "RELEASED"]},
+        "rule_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_sha256"],
+      "properties": {
+        "record_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_id", "schema_version", "profile_id", "profile_version", "subject", "source", "process_context", "measurement", "execution_context", "time", "lineage", "raw_artifacts", "disposition", "integrity"],
+      "properties": {
+        "evidence_id": {"type": "string", "minLength": 1},
+        "schema_version": {"const": "1.0"},
+        "profile_id": {"type": "string", "minLength": 1},
+        "profile_version": {"type": "string", "minLength": 1},
+        "subject": {"$ref": "#/$defs/subject"},
+        "source": {"$ref": "#/$defs/source"},
+        "process_context": {"$ref": "#/$defs/process_context"},
+        "measurement": {"$ref": "#/$defs/measurement"},
+        "execution_context": {"$ref": "#/$defs/execution_context"},
+        "time": {"$ref": "#/$defs/time"},
+        "lineage": {"$ref": "#/$defs/lineage"},
+        "raw_artifacts": {"$ref": "#/$defs/raw_artifacts"},
+        "disposition": {"$ref": "#/$defs/disposition"},
+        "integrity": {"$ref": "#/$defs/integrity"}
+      }
+    }
+  }
+}
