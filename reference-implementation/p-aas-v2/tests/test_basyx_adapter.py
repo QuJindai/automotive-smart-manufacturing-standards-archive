@@ -19,6 +19,13 @@ class BasyxAdapterTests(unittest.TestCase):
         self.assertEqual(cd_id,self.adapter.read_concept_description(cd_id).payload['id'])
     def test_import_falls_back_to_repository_posts(self):
         result=self.adapter.import_environment(self.fake.env); self.assertEqual('repository-posts',result.route); self.assertTrue(result.success)
+    def test_import_aasx_uses_upload_and_package_mime(self):
+        package=_fake_aasx(self.fake.env)
+        result=self.adapter.import_aasx(package,'fixture.aasx')
+        self.assertTrue(result.success)
+        self.assertEqual('upload-aasx',result.route)
+        self.assertEqual('application/asset-administration-shell-package',self.fake.last_upload_accept)
+        self.assertTrue(self.fake.last_upload_contains_zip)
     def test_fetch_openapi_decodes_basyx_base64_wrapped_json_string(self):
         self.fake.stop(); self.fake=FakeBaSyx(openapi_base64=True).start(); self.adapter=BasyxAdapter(self.fake.base_url,{'implementation':'Eclipse BaSyx','version':'milestone-fixture'})
         response=self.adapter.fetch_openapi(); self.assertEqual(200,response.status); self.assertIsInstance(response.payload,dict); self.assertEqual('3.0.1',response.payload['openapi']); self.assertIn('/shells/{aasIdentifier}',response.payload['paths'])
