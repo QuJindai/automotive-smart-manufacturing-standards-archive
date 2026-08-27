@@ -1,0 +1,31 @@
+name: Validate P0-06 manufacturing evidence
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-manufacturing-evidence-v1/**'
+      - 'machine-readable/p0-06/**'
+      - '.github/workflows/validate-p0-06-manufacturing-evidence.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-manufacturing-evidence-v1/**'
+      - 'machine-readable/p0-06/**'
+      - '.github/workflows/validate-p0-06-manufacturing-evidence.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  p0-06-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: P0-06 Python tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd reference-implementation/p-manufacturing-evidence-v1
+          PYTHONPATH=. python -m unittest discover -s tests -v
