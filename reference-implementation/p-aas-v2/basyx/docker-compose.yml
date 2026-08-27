@@ -1,0 +1,8 @@
+services:
+  aas-environment:
+    image: eclipsebasyx/aas-environment:2.0.0-milestone-13
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./application.properties:/application/application.properties:ro
+    restart: "no"

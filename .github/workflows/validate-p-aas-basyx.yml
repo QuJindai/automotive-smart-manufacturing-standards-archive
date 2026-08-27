@@ -1,0 +1,103 @@
+name: Validate P-AAS V2 BaSyx interoperability
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-aas-v2/**'
+      - 'reference-implementation/p-aas-v1/**'
+      - '.github/workflows/validate-p-aas-basyx.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-aas-v2/**'
+      - 'reference-implementation/p-aas-v1/**'
+      - '.github/workflows/validate-p-aas-basyx.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  v1-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: V1 unit/integration tests
+        run: python -m unittest discover -s reference-implementation/p-aas-v1/tests -v
+      - name: V1 embedded reference remains 19/19
+        shell: bash
+        run: |
+          set -euo pipefail
+          python reference-implementation/p-aas-v1/run_reference.py --out /tmp/p-aas-v1 | tee /tmp/p-aas-v1.log
+          grep -q 'AAS_PASS=19 AAS_FAIL=0 AAS_BLOCKED=0' /tmp/p-aas-v1.log
+
+  basyx-milestone-13:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: V2 fake-adapter unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd reference-implementation/p-aas-v2
+          PYTHONPATH=.:tests:../p-aas-v1 python -m unittest discover -s tests -v
+      - name: Start pinned BaSyx AAS Environment
+        working-directory: reference-implementation/p-aas-v2/basyx
+        run: docker compose up -d
+      - name: Wait for BaSyx OpenAPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import time, urllib.request
+          url='http://127.0.0.1:8081/v3/api-docs'; last=None
+          for _ in range(90):
+              try:
+                  with urllib.request.urlopen(url,timeout=3) as r:
+                      if r.status == 200:
+                          print('BASYX_OPENAPI_READY=PASS'); raise SystemExit(0)
+              except Exception as exc: last=exc
+              time.sleep(2)
+          print('BASYX_OPENAPI_READY=FAIL',repr(last)); raise SystemExit(1)
+          PY
+      - name: Run external P-AAS V2 against BaSyx milestone-13
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/p-aas-v2-basyx
+          python reference-implementation/p-aas-v2/run_external.py --adapter basyx --base-url http://127.0.0.1:8081 --fixture reference-implementation/p-aas-v2/basyx/fixture/environment.json --target-version 2.0.0-milestone-13 --out /tmp/p-aas-v2-basyx | tee /tmp/p-aas-v2-basyx.log
+          grep -q 'P_AAS_V2_REQUIRED_FAILURES=0' /tmp/p-aas-v2-basyx.log
+          python - <<'PY'
+          import json,pathlib
+          out=pathlib.Path('/tmp/p-aas-v2-basyx'); summary=json.loads((out/'interop-summary.json').read_text(encoding='utf-8')); matrix=json.loads((out/'implementation-capability-matrix.json').read_text(encoding='utf-8')); bundle=json.loads((out/'evidence-bundle.json').read_text(encoding='utf-8'))
+          assert summary['certification_claim'] is False
+          assert len(bundle['test_results']) == 19
+          assert [r['test_id'] for r in bundle['test_results']] == [f'AAS-T{i:03d}' for i in range(1,20)]
+          required={f'AAS-T{i:03d}' for i in list(range(1,10))+[11,12]}
+          assert all(r['result']=='PASS' for r in bundle['test_results'] if r['test_id'] in required)
+          assert any(r['result']=='NOT_APPLICABLE' for r in bundle['test_results'])
+          assert any(c['status']=='UNSUPPORTED_WITH_EVIDENCE' for c in matrix)
+          print('P_AAS_V2_BASYX_CORE=PASS'); print('P_AAS_V2_COUNTS='+json.dumps(summary['counts'],sort_keys=True))
+          PY
+      - name: Capture BaSyx logs
+        if: always()
+        working-directory: reference-implementation/p-aas-v2/basyx
+        run: docker compose logs --no-color > /tmp/basyx-container.log || true
+      - name: Upload one-day V2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p-aas-v2-basyx-${{ github.run_id }}
+          path: |
+            /tmp/p-aas-v2-basyx/
+            /tmp/p-aas-v2-basyx.log
+            /tmp/basyx-container.log
+          if-no-files-found: warn
+          retention-days: 1
+          compression-level: 6
+      - name: Stop BaSyx
+        if: always()
+        working-directory: reference-implementation/p-aas-v2/basyx
+        run: docker compose down -v --remove-orphans

@@ -26,6 +26,22 @@ class AasxTests(unittest.TestCase):
             results=validate_aasx(p,{'manual.txt','program-version-note.txt','certificate.txt'})
             self.assertTrue(all(x.passed for x in results),[x.message for x in results])
 
+    def test_xml_serialized_aas_spec_target_is_valid(self):
+        with tempfile.TemporaryDirectory() as td:
+            p=Path(td)/'xml-layout.aasx'
+            root_rels='''<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Target="aasx/aasx-origin" Type="http://admin-shell.io/aasx/relationships/aasx-origin"/></Relationships>'''
+            origin_rels='''<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r2" Target="xml/content.xml" Type="http://admin-shell.io/aasx/relationships/aas-spec"/></Relationships>'''
+            content_types='''<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/aasx/aasx-origin" ContentType="text/plain"/></Types>'''
+            with zipfile.ZipFile(p,'w',compression=zipfile.ZIP_DEFLATED) as z:
+                z.writestr('[Content_Types].xml',content_types)
+                z.writestr('_rels/.rels',root_rels)
+                z.writestr('aasx/aasx-origin',b'')
+                z.writestr('aasx/_rels/aasx-origin.rels',origin_rels)
+                z.writestr('aasx/xml/content.xml','<environment/>')
+            results=validate_aasx(p,set())
+            failures=[x for x in results if not x.passed]
+            self.assertEqual([],failures,[x.message for x in failures])
+
     def test_missing_origin_fails(self):
         with tempfile.TemporaryDirectory() as td:
             good=build_aasx(self.sample,Path(td)/'good.aasx')
