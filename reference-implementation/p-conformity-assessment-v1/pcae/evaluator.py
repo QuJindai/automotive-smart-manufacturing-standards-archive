@@ -112,18 +112,21 @@ def _proof_types(package: dict[str, Any]) -> set[str]:
 
 
 def _chain_has(package: dict[str, Any], level: str) -> bool:
-    for row in package.get("assurance_chain") or []:
-        if row.get("level") == level and row.get("decision") == "PASS" and row.get("lifecycle_state") == "VALID":
-            return True
-    return False
+    return any(
+        row.get("level") == level
+        and row.get("decision") == "PASS"
+        and row.get("lifecycle_state") == "VALID"
+        for row in package.get("assurance_chain") or []
+    )
 
 
 def _upstream_blob_from_proof(package_dir: Path, package: dict[str, Any], standard_id: str) -> str | None:
+    allowed_stages = {
+        "R14_P0_02_DUAL_IMPLEMENTATION_CROSS_VALIDATION",
+        "R14_P0_06_MANUFACTURING_EVIDENCE_CHAIN_PROTOTYPE",
+    }
     for ref in package.get("evidence_refs") or []:
-        if ref.get("source_stage") not in {
-            "R14_P0_02_DUAL_IMPLEMENTATION_CROSS_VALIDATION",
-            "R14_P0_06_MANUFACTURING_EVIDENCE_CHAIN_PROTOTYPE",
-        }:
+        if ref.get("source_stage") not in allowed_stages:
             continue
         path = package_dir / str(ref.get("uri") or "")
         try:
@@ -147,8 +150,7 @@ def validate_package(package_dir: Path) -> AssessmentRun:
         rows = [ConformanceResult(test_id, "BLOCKED", f"package.json unreadable: {exc}") for test_id in TEST_IDS]
         return AssessmentRun(package_dir, {}, rows, {}, "REEVALUATION_REQUIRED", "BLOCKED", {"bindings": []}, {"state": "REQUIRED", "triggers": ["PACKAGE_UNREADABLE"]})
 
-    cac = _load_cac()
-    criteria = cac.get("criteria") or []
+    criteria = _load_cac().get("criteria") or []
     checks: dict[str, tuple[bool, str, Any]] = {}
     level = package.get("assessment_level")
     level_index = LEVEL_ORDER.get(str(level), -1)
@@ -204,7 +206,9 @@ def validate_package(package_dir: Path) -> AssessmentRun:
     )
 
     checks["CAE-T006"] = (
-        level in ROLE_BY_LEVEL and (package.get("assessor") or {}).get("role") == ROLE_BY_LEVEL.get(str(level)) and bool((package.get("assessor") or {}).get("assessor_id")),
+        level in ROLE_BY_LEVEL
+        and (package.get("assessor") or {}).get("role") == ROLE_BY_LEVEL.get(str(level))
+        and bool((package.get("assessor") or {}).get("assessor_id")),
         "assessor role permitted for declared level",
         package.get("assessor"),
     )
@@ -228,24 +232,44 @@ def validate_package(package_dir: Path) -> AssessmentRun:
         c0_ok = {"MODEL", "PROFILE_DECLARATION", "AUTOMATED_TEST"}.issubset(actual_proofs)
     checks["CAE-T009"] = (c0_ok, "C0 supplier-declaration inputs complete when applicable", None)
 
+    # C1's raw lab/TCK proof is required only when C1 itself is being assessed.
+    # C2/C3 inherit a valid C1 assessment through the assurance chain; they must
+    # not duplicate lower-level raw proof packages merely to remain conformant.
     c1_ok = True
-    if level_index >= LEVEL_ORDER["C1"]:
-        c1_ok = _chain_has(package, "C0") and "LAB_REPORT" in actual_proofs and _has_source_stage(package, "R14_P0_02_DUAL_IMPLEMENTATION_CROSS_VALIDATION")
-    checks["CAE-T010"] = (c1_ok, "C1 predecessor and lab/TCK evidence valid when applicable", None)
+    if level == "C1":
+        c1_ok = (
+            _chain_has(package, "C0")
+            and "LAB_REPORT" in actual_proofs
+            and _has_source_stage(package, "R14_P0_02_DUAL_IMPLEMENTATION_CROSS_VALIDATION")
+        )
+    elif level_index > LEVEL_ORDER["C1"]:
+        c1_ok = _chain_has(package, "C0") and _chain_has(package, "C1")
+    checks["CAE-T010"] = (c1_ok, "C1 predecessor and lab/TCK evidence valid or inherited through a valid C1 assessment", None)
 
     c2_ok = True
     if level_index >= LEVEL_ORDER["C2"]:
         binding = package.get("project_binding") or {}
-        c2_ok = _chain_has(package, "C1") and bool(binding.get("project_id")) and bool(binding.get("instance_id")) and _has_source_stage(package, "R14_P0_06_MANUFACTURING_EVIDENCE_CHAIN_PROTOTYPE")
+        c2_ok = (
+            _chain_has(package, "C1")
+            and bool(binding.get("project_id"))
+            and bool(binding.get("instance_id"))
+            and _has_source_stage(package, "R14_P0_06_MANUFACTURING_EVIDENCE_CHAIN_PROTOTYPE")
+        )
     checks["CAE-T011"] = (c2_ok, "C2 predecessor/project binding/P0-06 proof valid when applicable", None)
 
     c3_ok = True
     if level == "C3":
         monitoring = package.get("continuous_monitoring") or {}
         try:
-            start = _parse_utc(monitoring.get("window_start")); end = _parse_utc(monitoring.get("window_end"))
+            start = _parse_utc(monitoring.get("window_start"))
+            end = _parse_utc(monitoring.get("window_end"))
             coverage_days = (end - start).total_seconds() / 86400
-            c3_ok = _chain_has(package, "C2") and monitoring.get("coverage_ratio") == 1.0 and coverage_days >= int(monitoring.get("required_days", 0)) and "CONTINUOUS_EVIDENCE" in actual_proofs
+            c3_ok = (
+                _chain_has(package, "C2")
+                and monitoring.get("coverage_ratio") == 1.0
+                and coverage_days >= int(monitoring.get("required_days", 0))
+                and "CONTINUOUS_EVIDENCE" in actual_proofs
+            )
         except Exception:
             c3_ok = False
     checks["CAE-T012"] = (c3_ok, "C3 predecessor and continuous observation coverage valid when applicable", None)
@@ -261,26 +285,43 @@ def validate_package(package_dir: Path) -> AssessmentRun:
         baseline_ok = baseline_ok and p006_blob == baseline.get("p0_06_status_blob_sha")
     checks["CAE-T013"] = (baseline_ok, "assessment object and upstream baselines consistently bound", {"p0_02": p002_blob, "p0_06": p006_blob})
 
-    material_drift = any(baseline.get(key) != observed.get(key) for key in MATERIAL_BASELINE_KEYS) or any(row.get("material") is True and row.get("status") != "CLOSED" for row in package.get("drifts") or [])
-    checks["CAE-T014"] = (package.get("declared_material_drift") is material_drift, "material drift detection deterministic", {"computed_material_drift": material_drift})
+    material_drift = (
+        any(baseline.get(key) != observed.get(key) for key in MATERIAL_BASELINE_KEYS)
+        or any(row.get("material") is True and row.get("status") != "CLOSED" for row in package.get("drifts") or [])
+    )
+    checks["CAE-T014"] = (
+        package.get("declared_material_drift") is material_drift,
+        "material drift detection deterministic",
+        {"computed_material_drift": material_drift},
+    )
 
     validity = package.get("validity") or {}
     try:
         assessment_time = _parse_utc(package.get("assessment_time"))
-        valid_from = _parse_utc(validity.get("valid_from")); valid_until = _parse_utc(validity.get("valid_until"))
+        valid_from = _parse_utc(validity.get("valid_from"))
+        valid_until = _parse_utc(validity.get("valid_until"))
         expired = assessment_time > valid_until
         not_yet_valid = assessment_time < valid_from
     except Exception:
-        assessment_time = None; expired = True; not_yet_valid = True
+        expired = True
+        not_yet_valid = True
     revoked = validity.get("revoked") is True
     superseded = validity.get("superseded") is True
     triggers = []
-    if material_drift: triggers.append("MATERIAL_DRIFT")
-    if expired: triggers.append("EXPIRED")
-    if revoked: triggers.append("REVOKED")
-    if superseded: triggers.append("SUPERSEDED")
+    if material_drift:
+        triggers.append("MATERIAL_DRIFT")
+    if expired:
+        triggers.append("EXPIRED")
+    if revoked:
+        triggers.append("REVOKED")
+    if superseded:
+        triggers.append("SUPERSEDED")
     expected_reeval = "REQUIRED" if triggers else "NOT_REQUIRED"
-    checks["CAE-T015"] = (package.get("claimed_reevaluation_state") == expected_reeval, "reevaluation trigger state deterministic", {"expected": expected_reeval, "triggers": triggers})
+    checks["CAE-T015"] = (
+        package.get("claimed_reevaluation_state") == expected_reeval,
+        "reevaluation trigger state deterministic",
+        {"expected": expected_reeval, "triggers": triggers},
+    )
 
     checks["CAE-T016"] = (
         not expired and not not_yet_valid and not revoked and not superseded,
@@ -303,7 +344,8 @@ def validate_package(package_dir: Path) -> AssessmentRun:
 
     metrics = _metric_vector(package.get("effectiveness_sources") or {})
     checks["CAE-T018"] = (
-        metrics == (package.get("claimed_effectiveness_metrics") or {}) and all(row.get("status") != "INVALID" for row in metrics.values()),
+        metrics == (package.get("claimed_effectiveness_metrics") or {})
+        and all(row.get("status") != "INVALID" for row in metrics.values()),
         "effectiveness metric vector reproducible from source counters",
         metrics,
     )
@@ -314,18 +356,37 @@ def validate_package(package_dir: Path) -> AssessmentRun:
     for criterion in criteria:
         test_id = criterion.get("test_id")
         binding = binding_by_test.get(test_id) or {}
-        if binding.get("requirement_id") != criterion.get("requirement_id") or not binding.get("evidence_ids") or any(eid not in evidence_ids for eid in binding.get("evidence_ids") or []):
+        if (
+            binding.get("requirement_id") != criterion.get("requirement_id")
+            or not binding.get("evidence_ids")
+            or any(eid not in evidence_ids for eid in binding.get("evidence_ids") or [])
+        ):
             trace_ok = False
             break
-    checks["CAE-T019"] = (trace_ok and len(binding_by_test) == 20, "Requirement→Test→Proof/Evidence trace complete", {"binding_count": len(binding_by_test)})
+    checks["CAE-T019"] = (
+        trace_ok and len(binding_by_test) == 20,
+        "Requirement→Test→Proof/Evidence trace complete",
+        {"binding_count": len(binding_by_test)},
+    )
 
     signature_state = package.get("signature_state")
-    statement_ok = package.get("certification_claim") is False and package.get("statement_type") == "CONFORMITY_EVALUATION_STATEMENT" and signature_state in {"UNSIGNED", "SIGNED_VERIFIED", "SIGNED_UNVERIFIED"}
+    statement_ok = (
+        package.get("certification_claim") is False
+        and package.get("statement_type") == "CONFORMITY_EVALUATION_STATEMENT"
+        and signature_state in {"UNSIGNED", "SIGNED_VERIFIED", "SIGNED_UNVERIFIED"}
+    )
     if signature_state == "UNSIGNED":
         statement_ok = statement_ok and not package.get("signature")
-    checks["CAE-T020"] = (statement_ok, "conformity statement truthful and certification_claim=false", {"signature_state": signature_state})
+    checks["CAE-T020"] = (
+        statement_ok,
+        "conformity statement truthful and certification_claim=false",
+        {"signature_state": signature_state},
+    )
 
-    results = [ConformanceResult(test_id, "PASS" if checks[test_id][0] else "FAIL", checks[test_id][1], checks[test_id][2]) for test_id in TEST_IDS]
+    results = [
+        ConformanceResult(test_id, "PASS" if checks[test_id][0] else "FAIL", checks[test_id][1], checks[test_id][2])
+        for test_id in TEST_IDS
+    ]
     if revoked:
         lifecycle = "REVOKED"
     elif superseded:
@@ -336,12 +397,24 @@ def validate_package(package_dir: Path) -> AssessmentRun:
         lifecycle = "REEVALUATION_REQUIRED"
     else:
         lifecycle = "VALID"
+
     if any(row.result == "FAIL" for row in results):
         overall = "FAIL"
     elif any(row.result == "BLOCKED" for row in results):
         overall = "BLOCKED"
     else:
         overall = input_decision
-    trace = {"schema_version": "1.0", "assessment_id": package.get("assessment_id"), "bindings": package.get("trace_bindings") or [], "evidence_refs": package.get("evidence_refs") or []}
-    reevaluation = {"schema_version": "1.0", "state": expected_reeval, "triggers": triggers, "lifecycle_state": lifecycle}
+
+    trace = {
+        "schema_version": "1.0",
+        "assessment_id": package.get("assessment_id"),
+        "bindings": package.get("trace_bindings") or [],
+        "evidence_refs": package.get("evidence_refs") or [],
+    }
+    reevaluation = {
+        "schema_version": "1.0",
+        "state": expected_reeval,
+        "triggers": triggers,
+        "lifecycle_state": lifecycle,
+    }
     return AssessmentRun(package_dir, package, results, metrics, lifecycle, overall, trace, reevaluation)
