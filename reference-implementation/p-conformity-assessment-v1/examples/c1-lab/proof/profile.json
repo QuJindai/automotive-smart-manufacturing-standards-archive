@@ -1,1 +1,1 @@
-{"kind":"PROFILE_DECLARATION","profile_id":"P-CAE-AUTO-R14","profile_version":"1.0","synthetic":true}
+{"assessment_object_id":"urn:example:assessment-object:001","assessment_object_type":"AUTOMOTIVE_MANUFACTURING_IMPLEMENTATION","baseline_sha256":"f54c0a41594e82764b68ca77f9d6016954f9ee2898ec0c85ae891afe725e1db7","kind":"PROFILE_DECLARATION","profile_id":"P-CAE-AUTO-R14","profile_version":"1.0","synthetic":true}

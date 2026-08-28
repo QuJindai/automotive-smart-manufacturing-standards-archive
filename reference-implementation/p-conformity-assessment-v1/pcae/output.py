@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +21,7 @@ def write_outputs(run: AssessmentRun, out_dir: Path) -> dict[str, str]:
     out_dir.mkdir(parents=True, exist_ok=True)
     package = run.package
     level = package.get("assessment_level") or "C0"
-    assessment_time = package.get("assessment_time") or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    assessment_time = package.get("assessment_time") or "1970-01-01T00:00:00Z"
 
     values = {
         "assessment-summary.json": {
@@ -56,6 +55,7 @@ def write_outputs(run: AssessmentRun, out_dir: Path) -> dict[str, str]:
             "decision": run.overall_decision,
             "lifecycle_state": run.lifecycle_state,
             "validity": package.get("validity"),
+            "scope": package.get("statement_scope"),
             "signature_state": package.get("signature_state", "UNSIGNED"),
             "certification_claim": False,
         },
