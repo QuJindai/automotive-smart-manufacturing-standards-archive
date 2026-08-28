@@ -271,8 +271,12 @@ jobs:
               pathlib.Path('/tmp/pcae-standard'),pathlib.Path('/tmp/pcae-upstream')
           ]
           extra=[
-              pathlib.Path('/tmp/pcae-tests.log'),pathlib.Path('/tmp/pcae-negative-summary.json'),
-              pathlib.Path('/tmp/pcae-negative.log'),pathlib.Path('/tmp/pcae-cross-implementation-summary.json'),
+              pathlib.Path('/tmp/pcae-tests.log'),
+              pathlib.Path('/tmp/pcae-c0.log'),pathlib.Path('/tmp/pcae-c1.log'),
+              pathlib.Path('/tmp/pcae-c2.log'),pathlib.Path('/tmp/pcae-c3.log'),
+              pathlib.Path('/tmp/pcae-drift.log'),
+              pathlib.Path('/tmp/pcae-negative-summary.json'),pathlib.Path('/tmp/pcae-negative.log'),
+              pathlib.Path('/tmp/pcae-cross-implementation-summary.json'),
               pathlib.Path('/tmp/pcae-node-c0.json'),pathlib.Path('/tmp/pcae-node-c1.json'),
               pathlib.Path('/tmp/pcae-node-c2.json'),pathlib.Path('/tmp/pcae-node-c3.json'),
               pathlib.Path('/tmp/pcae-node-drift.json')
@@ -304,6 +308,7 @@ jobs:
               'stage':'R14_P0_08_IMPLEMENTATION_EFFECTIVENESS_CONFORMANCE_PROTOTYPE',
               'self_contained':True,
               'file_count':len(entries),
+              'index_excludes_self':True,
               'files':entries,
               'weighted_score_used':False,
               'certification_claim':False
