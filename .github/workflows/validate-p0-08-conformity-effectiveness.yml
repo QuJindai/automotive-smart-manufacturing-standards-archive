@@ -280,9 +280,11 @@ jobs:
           entries=[]
           privacy_patterns=[
               re.compile(r'drive\.google\.com',re.I),re.compile(r'docs\.google\.com',re.I),
-              re.compile(r'access_token',re.I),re.compile(r'refresh_token',re.I),
-              re.compile(r'authorization:\s*bearer',re.I),re.compile(r'\bghp_[A-Za-z0-9]+'),
-              re.compile(r'\bgithub_pat_[A-Za-z0-9_]+'),re.compile(r'\bsk-[A-Za-z0-9_-]{16,}')
+              re.compile(r"\baccess_token\b\s*[:=]\s*['\"]?[A-Za-z0-9_.\-]{12,}",re.I),
+              re.compile(r"\brefresh_token\b\s*[:=]\s*['\"]?[A-Za-z0-9_.\-]{12,}",re.I),
+              re.compile(r'authorization:\s*bearer\s+[A-Za-z0-9_.\-]{12,}',re.I),
+              re.compile(r'\bghp_[A-Za-z0-9]+'),re.compile(r'\bgithub_pat_[A-Za-z0-9_]+'),
+              re.compile(r'\bsk-[A-Za-z0-9_-]{16,}')
           ]
           files=[]
           for root in roots:
