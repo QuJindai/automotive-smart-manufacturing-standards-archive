@@ -232,9 +232,6 @@ def validate_package(package_dir: Path) -> AssessmentRun:
         c0_ok = {"MODEL", "PROFILE_DECLARATION", "AUTOMATED_TEST"}.issubset(actual_proofs)
     checks["CAE-T009"] = (c0_ok, "C0 supplier-declaration inputs complete when applicable", None)
 
-    # C1's raw lab/TCK proof is required only when C1 itself is being assessed.
-    # C2/C3 inherit a valid C1 assessment through the assurance chain; they must
-    # not duplicate lower-level raw proof packages merely to remain conformant.
     c1_ok = True
     if level == "C1":
         c1_ok = (
@@ -274,16 +271,27 @@ def validate_package(package_dir: Path) -> AssessmentRun:
             c3_ok = False
     checks["CAE-T012"] = (c3_ok, "C3 predecessor and continuous observation coverage valid when applicable", None)
 
+    # T013 verifies that the declared assessment baseline is complete and that
+    # immutable upstream proof snapshots are hash-bound to that baseline. The
+    # observed baseline may legitimately differ later; that difference is a
+    # lifecycle drift handled by T014/T015, not a data-integrity failure here.
     baseline = package.get("baseline") or {}
     observed = package.get("observed_baseline") or {}
-    baseline_ok = all(baseline.get(key) == observed.get(key) for key in MATERIAL_BASELINE_KEYS)
+    baseline_ok = all(
+        baseline.get(key) not in (None, "") and observed.get(key) not in (None, "")
+        for key in MATERIAL_BASELINE_KEYS
+    )
     p002_blob = _upstream_blob_from_proof(package_dir, package, "P0-02")
     p006_blob = _upstream_blob_from_proof(package_dir, package, "P0-06")
     if p002_blob is not None:
         baseline_ok = baseline_ok and p002_blob == baseline.get("p0_02_status_blob_sha")
     if p006_blob is not None:
         baseline_ok = baseline_ok and p006_blob == baseline.get("p0_06_status_blob_sha")
-    checks["CAE-T013"] = (baseline_ok, "assessment object and upstream baselines consistently bound", {"p0_02": p002_blob, "p0_06": p006_blob})
+    checks["CAE-T013"] = (
+        baseline_ok,
+        "declared baseline complete and upstream proof snapshots hash-bound",
+        {"p0_02": p002_blob, "p0_06": p006_blob},
+    )
 
     material_drift = (
         any(baseline.get(key) != observed.get(key) for key in MATERIAL_BASELINE_KEYS)
@@ -387,6 +395,7 @@ def validate_package(package_dir: Path) -> AssessmentRun:
         ConformanceResult(test_id, "PASS" if checks[test_id][0] else "FAIL", checks[test_id][1], checks[test_id][2])
         for test_id in TEST_IDS
     ]
+
     if revoked:
         lifecycle = "REVOKED"
     elif superseded:
