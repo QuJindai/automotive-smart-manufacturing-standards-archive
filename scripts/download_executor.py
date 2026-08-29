@@ -420,14 +420,12 @@ def run_job(job: dict, out_dir: Path) -> dict:
     if not isinstance(assets, list) or not assets:
         raise ValueError("job has no assets")
     sessions = job.get("upload_sessions") or {}
-    small_limit = int(job.get("small_limit_bytes") or 100 * 1024 * 1024)
     results: list[AssetResult] = []
     for raw in assets:
         if not isinstance(raw, dict):
             continue
-        size = int(raw.get("expected_size_bytes") or 0)
         session = sessions.get(str(raw.get("asset_id"))) if isinstance(sessions, dict) else None
-        if session and size > small_limit:
+        if session:
             result = upload_direct_resumable(raw, str(session))
         else:
             result = run_small_asset(raw, out_dir)
