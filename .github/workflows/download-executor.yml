@@ -62,7 +62,7 @@ jobs:
           set -euo pipefail
           curl -fsS \
             -H "Authorization: Bearer $OIDC_TOKEN" \
-            "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging/executor/job/$DOWNLOAD_ID" \
+            "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp/executor/job/$DOWNLOAD_ID" \
             -o job.json
           python - <<'PY'
           import json
@@ -80,7 +80,7 @@ jobs:
           DOWNLOAD_ID: ${{ steps.descriptor.outputs.download_id }}
         run: |
           set -euo pipefail
-          BASE='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive-staging'
+          BASE='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive'
           code=$(curl -sS -o drive-sessions.json -w '%{http_code}' -X POST \
             -H "Authorization: Bearer $OIDC_TOKEN" \
             "$BASE/executor/sessions/$DOWNLOAD_ID")
@@ -224,6 +224,49 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+      - name: Verify direct Drive uploads
+        if: steps.large.outputs.blocked != 'true'
+        shell: bash
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+          DOWNLOAD_ID: ${{ steps.descriptor.outputs.download_id }}
+        run: |
+          set -euo pipefail
+          count=$(python - <<'PY'
+          import json
+          data=json.load(open('result.json'))
+          print(len(data.get('drive_refs') or []))
+          PY
+          )
+          if [ "$count" = '0' ]; then
+            echo 'DIRECT_DRIVE_VERIFY=NOT_APPLICABLE'
+            exit 0
+          fi
+          python - <<'PY'
+          import json
+          data=json.load(open('result.json'))
+          open('drive-verify-request.json','w').write(json.dumps({'drive_refs':data.get('drive_refs') or []},separators=(',',':')))
+          PY
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data-binary @drive-verify-request.json \
+            "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive/executor/verify/$DOWNLOAD_ID" \
+            > drive-verify-result.json
+          python - <<'PY'
+          import json
+          data=json.load(open('result.json'))
+          verified=json.load(open('drive-verify-result.json'))
+          assert verified.get('verified') is True, verified
+          refs=verified.get('drive_refs') or []
+          assert refs, verified
+          data['drive_refs']=refs
+          data['drive_verified']=True
+          json.dump(data,open('result.json','w'),ensure_ascii=False,indent=2)
+          print('DIRECT_DRIVE_VERIFY=PASS',len(refs))
+          PY
+          rm -f drive-verify-request.json drive-verify-result.json
+
       - name: Submit normalized result
         shell: bash
         env:
@@ -244,7 +287,7 @@ jobs:
           }
           data['executor_exit_code']=int(os.environ.get('EXECUTOR_EXIT','0'))
           open('result-submit.json','w').write(json.dumps(data,separators=(',',':')))
-          print('download-mcp-large-result' if data.get('auth_required') is True else 'download-mcp-staging')
+          print('download-mcp-large-result' if data.get('auth_required') is True else 'download-mcp')
           PY
           )
           echo "CONTROL_RESULT_ENDPOINT=$endpoint"
