@@ -6,6 +6,13 @@ on:
     paths:
       - 'scripts/download_executor.py'
       - 'tests/download_executor/**'
+      - '.github/workflows/download-executor.yml'
+      - '.github/workflows/download-executor-ci.yml'
+  pull_request:
+    paths:
+      - 'scripts/download_executor.py'
+      - 'tests/download_executor/**'
+      - '.github/workflows/download-executor.yml'
       - '.github/workflows/download-executor-ci.yml'
   workflow_dispatch:
 
