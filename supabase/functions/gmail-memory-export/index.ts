@@ -6,6 +6,7 @@ import {
   DRIVE_FILE_SCOPE,
   GMAIL_READONLY_SCOPE,
   hasRequiredScopes,
+  OAUTH_STATE_TTL_MS,
   redactJob,
   selectLatestExportCandidate,
 } from "../_shared/memory_export_core.ts";
@@ -240,7 +241,7 @@ async function oauthStart() {
   const state = randomToken();
   const attempt = await beginNotebookOAuth(state);
   const now = Date.now();
-  const expiresAt = new Date(now + 10 * 60 * 1000).toISOString();
+  const expiresAt = new Date(now + OAUTH_STATE_TTL_MS).toISOString();
   await saveState(AUTH_KIND, {
     authorized: false,
     authorized_at: null,

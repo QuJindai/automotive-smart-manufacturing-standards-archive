@@ -1,5 +1,6 @@
 export const GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+export const OAUTH_STATE_TTL_MS = 60 * 60 * 1000;
 
 export type EncryptedBlob = { iv: string; ciphertext: string };
 

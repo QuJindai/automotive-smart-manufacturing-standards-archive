@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import * as memoryExportCore from "../../supabase/functions/_shared/memory_export_core.ts";
 
 import {
   buildMemoryExportJob,
@@ -14,6 +15,10 @@ import {
 
 const signedUrl = "https://chatgpt.com/backend-api/estuary/content?id=file-abc&ts=1788000000&sig=top-secret";
 const encryptionKey = "test-only-encryption-key-with-more-than-32-characters";
+
+test("keeps the OAuth state valid for a full hour", () => {
+  assert.equal(memoryExportCore.OAUTH_STATE_TTL_MS, 60 * 60 * 1000);
+});
 
 function b64url(value) {
   return Buffer.from(value, "utf8").toString("base64url");
