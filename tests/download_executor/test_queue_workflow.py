@@ -8,7 +8,7 @@ WORKFLOW = (ROOT / ".github/workflows/download-executor.yml").read_text(encoding
 
 class QueueWorkflowContracts(unittest.TestCase):
     def test_schedule_and_manual_recovery_are_enabled(self):
-        self.assertIn("cron: '*/5 * * * *'", WORKFLOW)
+        self.assertIn("cron: '2/5 * * * *'", WORKFLOW)
         self.assertIn("workflow_dispatch:", WORKFLOW)
 
     def test_non_push_run_claims_with_oidc_and_allows_empty_queue(self):
@@ -36,3 +36,4 @@ class QueueWorkflowContracts(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
