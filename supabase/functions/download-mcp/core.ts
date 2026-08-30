@@ -81,16 +81,76 @@ export function sanitizedFilename(value: string): string {
   return cleaned.slice(0, 180);
 }
 
+function hostIs(hostname: string, domain: string): boolean {
+  return hostname === domain || hostname.endsWith(`.${domain}`);
+}
+
 function providerFor(url: URL) {
+  const hostname = url.hostname.toLowerCase();
   const pathname = decodeURIComponent(url.pathname);
-  const rawName = pathname.split("/").filter(Boolean).at(-1) ?? "download.bin";
+  let provider = "generic_https";
+  let browserHint = false;
+
+  if (hostIs(hostname, "arxiv.org")) {
+    provider = "arxiv";
+  } else if (hostIs(hostname, "huggingface.co")) {
+    provider = pathname.includes("/datasets/")
+      ? "huggingface_dataset"
+      : "huggingface_model";
+  } else if (hostIs(hostname, "modelscope.cn")) {
+    provider = "modelscope";
+  } else if (hostIs(hostname, "un.org") || hostIs(hostname, "unece.org")) {
+    provider = "un_documents";
+    browserHint = true;
+  } else if (hostIs(hostname, "europa.eu")) {
+    provider = "eur_lex";
+    browserHint = true;
+  } else if (hostIs(hostname, "dhs.gov")) {
+    provider = "dhs";
+    browserHint = true;
+  } else if (hostIs(hostname, "transportation.gov") || hostIs(hostname, "dot.gov")) {
+    provider = "us_dot";
+    browserHint = true;
+  } else if (hostIs(hostname, "github.com") || hostIs(hostname, "githubusercontent.com")) {
+    provider = "github";
+  }
+
+  let filename = sanitizedFilename(
+    pathname.split("/").filter(Boolean).at(-1) ?? "download.bin",
+  );
+  if (provider === "arxiv" && !filename.toLowerCase().endsWith(".pdf")) {
+    filename = sanitizedFilename(`${filename}.pdf`);
+  }
+  const lowerName = filename.toLowerCase();
+  const kind = lowerName.endsWith(".pdf")
+    ? "pdf"
+    : lowerName.endsWith(".gguf")
+    ? "gguf"
+    : lowerName.endsWith(".zip")
+    ? "zip"
+    : lowerName.endsWith(".safetensors")
+    ? "safetensors"
+    : "binary";
+  const contentTypeHint = kind === "pdf"
+    ? "application/pdf"
+    : kind === "zip"
+    ? "application/zip"
+    : kind === "binary"
+    ? null
+    : "application/octet-stream";
+
   return {
     source_url: url.toString(),
-    provider: "generic_https",
-    filename: sanitizedFilename(rawName),
-    content_type_hint: pathname.toLowerCase().endsWith(".pdf") ? "application/pdf" : null,
-    fallback_chain: ["native", "browser"],
-    browser_hint: false,
+    canonical_url: url.toString(),
+    provider,
+    filename,
+    kind,
+    content_type_hint: contentTypeHint,
+    fallback_chain: browserHint
+      ? ["native", "browser", "alternate_egress"]
+      : ["native", "browser"],
+    browser_hint: browserHint,
+    range_hint: true,
   };
 }
 
@@ -513,4 +573,3 @@ export async function privatePathMatches(pathname: string): Promise<boolean> {
     .join("");
   return actual === PRIVATE_PATH_SHA256;
 }
-

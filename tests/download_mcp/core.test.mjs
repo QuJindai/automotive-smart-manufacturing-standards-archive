@@ -5,6 +5,7 @@ import {
   applyClaim,
   applyExecutorResult,
   applySourceResolution,
+  buildAsset,
   buildInitialJob,
   buildToolDefinitions,
   downloadMcpSubpath,
@@ -79,6 +80,47 @@ test("staging jobs use an isolated state kind", () => {
     downloadStateKind("/functions/v1/download-mcp-staging/mcp/capability"),
     "download_job_staging",
   );
+});
+
+test("direct sources preserve provider, file kind, and fallback compatibility", () => {
+  const arxiv = buildAsset("https://arxiv.org/pdf/1706.03762", 0);
+  assert.equal(arxiv.provider, "arxiv");
+  assert.equal(arxiv.filename, "1706.03762.pdf");
+  assert.equal(arxiv.kind, "pdf");
+  assert.equal(arxiv.content_type_hint, "application/pdf");
+
+  const model = buildAsset(
+    "https://huggingface.co/openai/example/resolve/main/model.safetensors",
+    1,
+  );
+  assert.equal(model.provider, "huggingface_model");
+  assert.equal(model.kind, "safetensors");
+
+  const dataset = buildAsset(
+    "https://huggingface.co/datasets/openai/example/resolve/main/archive.zip",
+    2,
+  );
+  assert.equal(dataset.provider, "huggingface_dataset");
+  assert.equal(dataset.kind, "zip");
+
+  const officialDocument = buildAsset(
+    "https://unece.org/sites/default/files/2024-01/sample.pdf",
+    3,
+  );
+  assert.equal(officialDocument.provider, "un_documents");
+  assert.equal(officialDocument.evidence.browser_hint, true);
+  assert.deepEqual(officialDocument.evidence.fallback_chain, [
+    "native",
+    "browser",
+    "alternate_egress",
+  ]);
+
+  const release = buildAsset(
+    "https://github.com/example/project/releases/download/v1/archive.zip",
+    4,
+  );
+  assert.equal(release.provider, "github");
+  assert.equal(release.kind, "zip");
 });
 
 test("official public resolution queues the same job", () => {
@@ -277,4 +319,3 @@ test("missing Drive evidence cannot complete", () => {
 
   assert.notEqual(next.status, "COMPLETED");
 });
-
