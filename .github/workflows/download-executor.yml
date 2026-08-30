@@ -46,8 +46,12 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = 'push' ]; then
-            path=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep '^\.download/jobs/.*\.json$' | head -n 1)
-            test -n "$path"
+            path=$(git diff-tree --no-commit-id --name-only --diff-filter=AM -r "$GITHUB_SHA" | grep '^\.download/jobs/.*\.json$' | head -n 1 || true)
+            if [ -z "$path" ]; then
+              echo 'found=false' >> "$GITHUB_OUTPUT"
+              echo 'DOWNLOAD_DESCRIPTOR=REMOVED'
+              exit 0
+            fi
             id=$(python - "$path" <<'PY'
           import json, sys
           from scripts.download_executor import validate_descriptor
@@ -329,4 +333,3 @@ jobs:
           assert r.get('download_id')
           print('EXECUTOR_RESULT_SUBMIT=PASS',r['download_id'],r.get('status'))
           PY
-

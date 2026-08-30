@@ -21,6 +21,12 @@ class QueueWorkflowContracts(unittest.TestCase):
         self.assertIn("git diff-tree --no-commit-id", WORKFLOW)
         self.assertIn("validate_descriptor", WORKFLOW)
 
+    def test_deleted_descriptor_exits_as_an_empty_queue(self):
+        self.assertIn("--diff-filter=AM", WORKFLOW)
+        self.assertIn("if [ -z \"$path\" ]; then", WORKFLOW)
+        self.assertIn("echo 'found=false' >> \"$GITHUB_OUTPUT\"", WORKFLOW)
+        self.assertIn("DOWNLOAD_DESCRIPTOR=REMOVED", WORKFLOW)
+
     def test_execution_steps_are_guarded_by_found_output(self):
         self.assertGreaterEqual(
             WORKFLOW.count("steps.descriptor.outputs.found == 'true'"),
@@ -30,4 +36,3 @@ class QueueWorkflowContracts(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
