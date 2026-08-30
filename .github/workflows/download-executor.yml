@@ -6,7 +6,8 @@ on:
     paths:
       - '.download/jobs/**'
   schedule:
-    - cron: '*/5 * * * *'
+    # Offset the five-minute poll away from GitHub's busiest cron boundaries.
+    - cron: '2/5 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -333,3 +334,4 @@ jobs:
           assert r.get('download_id')
           print('EXECUTOR_RESULT_SUBMIT=PASS',r['download_id'],r.get('status'))
           PY
+
