@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - '.download/jobs/**'
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,24 +26,6 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Resolve descriptor
-        id: descriptor
-        shell: bash
-        run: |
-          set -euo pipefail
-          path=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep '^\.download/jobs/.*\.json$' | head -n 1)
-          test -n "$path"
-          id=$(python - "$path" <<'PY'
-          import json, sys
-          from scripts.download_executor import validate_descriptor
-          obj=json.load(open(sys.argv[1],encoding='utf-8'))
-          print(validate_descriptor(obj))
-          PY
-          )
-          echo "path=$path" >> "$GITHUB_OUTPUT"
-          echo "download_id=$id" >> "$GITHUB_OUTPUT"
-          echo "DOWNLOAD_ID=$id"
-
       - name: Request GitHub OIDC identity
         id: oidc
         shell: bash
@@ -53,7 +38,42 @@ jobs:
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve descriptor or claim queue
+        id: descriptor
+        shell: bash
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = 'push' ]; then
+            path=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep '^\.download/jobs/.*\.json$' | head -n 1)
+            test -n "$path"
+            id=$(python - "$path" <<'PY'
+          import json, sys
+          from scripts.download_executor import validate_descriptor
+          print(validate_descriptor(json.load(open(sys.argv[1],encoding='utf-8'))))
+          PY
+            )
+            echo "path=$path" >> "$GITHUB_OUTPUT"
+          else
+            code=$(curl -sS -o claim.json -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $OIDC_TOKEN" \
+              'https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp/executor/claim')
+            if [ "$code" = '204' ]; then
+              echo 'found=false' >> "$GITHUB_OUTPUT"
+              echo 'DOWNLOAD_QUEUE=EMPTY'
+              exit 0
+            fi
+            test "$code" = '200'
+            id=$(python -c 'import json; print(json.load(open("claim.json"))["download_id"])')
+            rm -f claim.json
+          fi
+          echo 'found=true' >> "$GITHUB_OUTPUT"
+          echo "download_id=$id" >> "$GITHUB_OUTPUT"
+          echo "DOWNLOAD_ID=$id"
+
       - name: Fetch secret job payload
+        if: steps.descriptor.outputs.found == 'true'
         shell: bash
         env:
           OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
@@ -73,6 +93,7 @@ jobs:
           PY
 
       - name: Acquire large-file Drive sessions
+        if: steps.descriptor.outputs.found == 'true'
         id: drive
         shell: bash
         env:
@@ -121,6 +142,7 @@ jobs:
           fi
 
       - name: Preflight large-file Drive routing
+        if: steps.descriptor.outputs.found == 'true'
         id: large
         shell: bash
         run: |
@@ -168,6 +190,7 @@ jobs:
           cat large.env >> "$GITHUB_OUTPUT"
 
       - name: Detect browser fallback requirement
+        if: steps.descriptor.outputs.found == 'true'
         id: browser
         shell: bash
         run: |
@@ -183,7 +206,7 @@ jobs:
           echo "BROWSER_REQUIRED=$required"
 
       - name: Install browser runtime
-        if: steps.large.outputs.blocked != 'true' && steps.browser.outputs.required == 'true'
+        if: steps.descriptor.outputs.found == 'true' && steps.large.outputs.blocked != 'true' && steps.browser.outputs.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -193,6 +216,7 @@ jobs:
           echo 'PLAYWRIGHT_BROWSER=READY'
 
       - name: Execute download
+        if: steps.descriptor.outputs.found == 'true'
         id: execute
         shell: bash
         env:
@@ -213,6 +237,7 @@ jobs:
           exit 0
 
       - name: Upload small-file transfer artifact
+        if: steps.descriptor.outputs.found == 'true'
         id: upload
         uses: actions/upload-artifact@v4
         with:
@@ -225,7 +250,7 @@ jobs:
           compression-level: 0
 
       - name: Verify direct Drive uploads
-        if: steps.large.outputs.blocked != 'true'
+        if: steps.descriptor.outputs.found == 'true' && steps.large.outputs.blocked != 'true'
         shell: bash
         env:
           OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
@@ -268,6 +293,7 @@ jobs:
           rm -f drive-verify-request.json drive-verify-result.json
 
       - name: Submit normalized result
+        if: steps.descriptor.outputs.found == 'true'
         shell: bash
         env:
           OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
@@ -303,3 +329,4 @@ jobs:
           assert r.get('download_id')
           print('EXECUTOR_RESULT_SUBMIT=PASS',r['download_id'],r.get('status'))
           PY
+

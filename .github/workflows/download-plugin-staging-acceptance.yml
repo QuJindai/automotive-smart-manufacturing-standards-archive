@@ -1,9 +1,6 @@
 name: Download Plugin Staging Acceptance
 
 on:
-  push:
-    paths:
-      - '.github/workflows/download-plugin-staging-acceptance.yml'
   workflow_dispatch:
 
 permissions:
@@ -13,12 +10,16 @@ jobs:
   mcp-contract:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      BASE_URL: https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging
+      MCP_PRIVATE_PATH: ${{ secrets.DOWNLOAD_MCP_PRIVATE_PATH }}
     steps:
       - name: Assert staging MCP contract
         shell: bash
         run: |
           set -euo pipefail
-          URL='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging'
+          test -n "$MCP_PRIVATE_PATH"
+          URL="${BASE_URL}${MCP_PRIVATE_PATH}"
           curl -fsS -X POST "$URL" -H 'content-type: application/json' \
             --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"download-ci","version":"1"}}}' > init.json
           curl -fsS -X POST "$URL" -H 'content-type: application/json' \
@@ -28,90 +29,90 @@ jobs:
           init=json.load(open('init.json'))
           tools=json.load(open('tools.json'))
           assert init['result']['protocolVersion']=='2025-06-18'
-          assert init['result']['serverInfo']['name']=='下载'
-          names=[x['name'] for x in tools['result']['tools']]
-          assert names==['start_download','get_download','resume_download','retry_download','finalize_download'], names
+          assert init['result']['serverInfo']=={'name':'下载','version':'0.4.0-autonomous-queue'}
+          definitions=tools['result']['tools']
+          names=[item['name'] for item in definitions]
+          assert names==[
+              'start_download','resolve_download_sources','get_download',
+              'resume_download','retry_download','finalize_download',
+          ], names
+          assert all(item.get('outputSchema',{}).get('type')=='object' for item in definitions)
           print('DOWNLOAD_STAGING_MCP_CONTRACT=PASS')
           PY
 
   state-policy:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      BASE_URL: https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging
+      MCP_PRIVATE_PATH: ${{ secrets.DOWNLOAD_MCP_PRIVATE_PATH }}
     steps:
-      - name: Assert persisted job and policy guards
+      - name: Assert queued jobs, resolution and policy guards
         shell: bash
         run: |
           set -euo pipefail
-          URL='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging'
+          test -n "$MCP_PRIVATE_PATH"
+          URL="${BASE_URL}${MCP_PRIVATE_PATH}"
           call() { curl -fsS -X POST "$URL" -H 'content-type: application/json' --data "$1"; }
-          call '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"start_download","arguments":{"request":"https://arxiv.org/pdf/1706.03762"}}}' > start.json
+
+          call '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"start_download","arguments":{"request":"https://arxiv.org/pdf/1706.03762","destination":"Google Drive/下载插件预发布"}}}' > direct.json
           python - <<'PY'
           import json
-          r=json.load(open('start.json'))['result']
-          assert not r.get('isError'), r
-          s=r['structuredContent']
-          assert s['status']=='FETCHING', s
-          assert s['destination']=='Google Drive'
-          assert s['assets'][0]['provider']=='arxiv'
-          assert s['next_action']['action']=='COMMIT_GITHUB_DESCRIPTOR'
-          open('download_id.txt','w').write(s['download_id'])
+          result=json.load(open('direct.json'))['result']
+          assert not result.get('isError'), result
+          job=result['structuredContent']
+          assert job['status']=='QUEUED', job
+          assert job['next_action']['action']=='WAIT_EXECUTOR', job
+          assert job['destination']=='Google Drive/下载插件预发布'
+          print('DOWNLOAD_DIRECT_QUEUE=PASS',job['download_id'])
           PY
-          ID=$(cat download_id.txt)
-          call "{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\",\"params\":{\"name\":\"get_download\",\"arguments\":{\"download_id\":\"$ID\"}}}" > get.json
+
+          call '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"start_download","arguments":{"request":"IDTA AAS Part 1 Metamodel","destination":"Google Drive/下载插件预发布"}}}' > resolving.json
           python - <<'PY'
           import json
-          s=json.load(open('get.json'))['result']['structuredContent']
-          assert s['download_id']==open('download_id.txt').read()
-          assert s['status']=='FETCHING'
-          print('DOWNLOAD_STATE_PERSISTENCE=PASS')
+          payload=json.load(open('resolving.json'))['result']['structuredContent']
+          assert payload['status']=='RESOLVING', payload
+          request={
+              'jsonrpc':'2.0','id':12,'method':'tools/call',
+              'params':{
+                  'name':'resolve_download_sources',
+                  'arguments':{
+                      'download_id':payload['download_id'],
+                      'sources':[{
+                          'requested_item':'IDTA AAS Part 1 Metamodel',
+                          'source_url':'https://industrialdigitaltwin.org/wp-content/uploads/2025/03/IDTA-01001-3-0-2_SpecificationAssetAdministrationShell_Part1_Metamodel.pdf',
+                          'filename':'IDTA-01001-3-0-2_SpecificationAssetAdministrationShell_Part1_Metamodel.pdf',
+                          'license_class':'open-specification',
+                          'official':True,
+                          'redistributable':True,
+                      }],
+                      'unresolved':[],
+                  },
+              },
+          }
+          json.dump(request,open('resolve-request.json','w'),ensure_ascii=False,separators=(',',':'))
           PY
-          call '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"start_download","arguments":{"request":"https://127.0.0.1/private"}}}' > ssrf.json
-          call '{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"start_download","arguments":{"request":"bypass paywall https://example.com/paid.pdf"}}}' > copyright.json
+          curl -fsS -X POST "$URL" -H 'content-type: application/json' \
+            --data-binary @resolve-request.json > resolved.json
           python - <<'PY'
           import json
-          for f in ['ssrf.json','copyright.json']:
-              r=json.load(open(f))['result']
-              assert r.get('isError') is True, (f,r)
+          start=json.load(open('resolving.json'))['result']['structuredContent']
+          result=json.load(open('resolved.json'))['result']
+          assert not result.get('isError'), result
+          job=result['structuredContent']
+          assert job['download_id']==start['download_id']
+          assert job['status']=='QUEUED', job
+          assert job['next_action']['action']=='WAIT_EXECUTOR', job
+          print('DOWNLOAD_SOURCE_RESOLUTION=PASS',job['download_id'])
+          PY
+
+          call '{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"start_download","arguments":{"request":"https://127.0.0.1/private"}}}' > ssrf.json
+          call '{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"start_download","arguments":{"request":"bypass paywall https://example.com/paid.pdf"}}}' > copyright.json
+          python - <<'PY'
+          import json
+          for name in ('ssrf.json','copyright.json'):
+              result=json.load(open(name))['result']
+              assert result.get('isError') is True, (name,result)
           print('DOWNLOAD_POLICY_GUARDS=PASS')
           PY
 
-  drive-lifecycle:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Advance real fixture from Drive archive to completed
-        shell: bash
-        run: |
-          set -euo pipefail
-          URL='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp-staging'
-          call() { curl -fsS -X POST "$URL" -H 'content-type: application/json' --data "$1"; }
-          ID='download-oidcfixture'
-          call '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"resume_download","arguments":{"download_id":"download-oidcfixture","result":{"type":"drive_archive_result","drive_refs":[{"file_id":"1uq26Z9WKeM0e_4bRPsVtugIrhWfKcA21","name":"Attention_Is_All_You_Need_1706.03762.pdf","size":2215244,"sha256":"bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697","web_url":"https://drive.google.com/file/d/1uq26Z9WKeM0e_4bRPsVtugIrhWfKcA21/view"}]}}}}' > archive.json
-          python - <<'PY'
-          import json
-          r=json.load(open('archive.json'))['result']
-          assert not r.get('isError'), r
-          s=r['structuredContent']
-          assert s['status']=='DRIVE_VERIFYING', s
-          assert s['drive_refs'][0]['file_id']=='1uq26Z9WKeM0e_4bRPsVtugIrhWfKcA21'
-          PY
-          call '{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"resume_download","arguments":{"download_id":"download-oidcfixture","result":{"type":"drive_verify_result","verified":true}}}}' > verify.json
-          python - <<'PY'
-          import json
-          r=json.load(open('verify.json'))['result']
-          assert not r.get('isError'), r
-          s=r['structuredContent']
-          assert s['drive_verified'] is True
-          assert s['next_action']['action']=='FINALIZE'
-          PY
-          call '{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"finalize_download","arguments":{"download_id":"download-oidcfixture"}}}' > final.json
-          python - <<'PY'
-          import json
-          r=json.load(open('final.json'))['result']
-          assert not r.get('isError'), r
-          s=r['structuredContent']
-          assert s['status']=='COMPLETED', s
-          assert s['drive_verified'] is True
-          assert s['failed_files']==[]
-          print('DOWNLOAD_DRIVE_LIFECYCLE=PASS')
-          PY

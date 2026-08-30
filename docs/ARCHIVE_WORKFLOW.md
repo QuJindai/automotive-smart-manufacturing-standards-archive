@@ -6,6 +6,16 @@
 
 GitHub is only the temporary network/compute relay. Google Drive is the authoritative long-term asset store.
 
+## ChatGPT plugin queue
+
+Direct HTTPS jobs enter `QUEUED`. Name- or number-only jobs remain `RESOLVING` until web Chat submits reviewed official/public sources through `resolve_download_sources`. The GitHub executor claims one queued job every five minutes using repository-, branch-, and workflow-bound OIDC. A successful byte/hash/Drive-verified upload completes automatically; no descriptor commit or manual finalize call is part of normal operation.
+
+All destinations are relative to the plugin-owned Drive folder `下载`. For example, `Google Drive/A/B` is archived as `下载/A/B`. Absolute paths, traversal, control characters, paths deeper than eight segments and segments longer than 100 characters are rejected.
+
+Production jobs use state kind `download_job`; staging jobs use `download_job_staging`. Staging jobs are intentionally invisible to the production queue.
+
+Release downloads in gates of 1, 10, 50 and 200 items. Do not advance a gate unless every prior job has a non-zero byte count, a valid SHA-256, independently verified Drive metadata, the expected nested parent and a terminal non-pending state.
+
 ## Adding a public asset
 
 1. Confirm that the source is official/public and redistribution is permitted.
@@ -47,3 +57,4 @@ Do not add direct full-text download entries for copyright-restricted ISO, IEC, 
 ## Drive transfer ceiling
 
 The current connector path used by this project rejects a single transfer object above 100 MiB. This repository therefore uses a 95 MiB payload guard and deterministic multi-part transfer for larger assets.
+

@@ -7,8 +7,12 @@ on:
       - 'scripts/download_executor.py'
       - 'tests/download_executor/**'
       - 'tests/memory_export/**'
+      - 'tests/download_mcp/**'
+      - 'tests/download_drive/**'
       - 'supabase/functions/_shared/memory_export_core.ts'
       - 'supabase/functions/gmail-memory-export/**'
+      - 'supabase/functions/download-mcp/**'
+      - 'supabase/functions/download-drive/**'
       - '.github/workflows/download-executor.yml'
       - '.github/workflows/download-executor-ci.yml'
   pull_request:
@@ -16,8 +20,12 @@ on:
       - 'scripts/download_executor.py'
       - 'tests/download_executor/**'
       - 'tests/memory_export/**'
+      - 'tests/download_mcp/**'
+      - 'tests/download_drive/**'
       - 'supabase/functions/_shared/memory_export_core.ts'
       - 'supabase/functions/gmail-memory-export/**'
+      - 'supabase/functions/download-mcp/**'
+      - 'supabase/functions/download-drive/**'
       - '.github/workflows/download-executor.yml'
       - '.github/workflows/download-executor-ci.yml'
   workflow_dispatch:
@@ -38,3 +46,6 @@ jobs:
           node-version: '24'
       - name: Run Gmail memory export contracts
         run: node --test tests/memory_export/memory_export_core.test.mjs
+      - name: Run Supabase download control contracts
+        run: node --test tests/download_mcp/*.test.mjs tests/download_drive/*.test.mjs
+
