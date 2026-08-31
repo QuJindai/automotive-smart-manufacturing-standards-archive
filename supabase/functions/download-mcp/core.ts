@@ -178,9 +178,7 @@ export function buildInitialJob(args: JsonObject, now: string, downloadId: strin
   return {
     download_id: downloadId,
     request,
-    destination: typeof args.destination === "string" && args.destination.trim()
-      ? args.destination.trim()
-      : "Google Drive",
+    destination: canonicalDestination(args.destination),
     constraints: isPlainObject(args.constraints) ? args.constraints : {},
     current_stage: queued ? "QUEUED" : "RESOLVING",
     last_verified_stage: queued ? "RESOLVING" : "PLANNED",
@@ -513,7 +511,10 @@ export function buildToolDefinitions() {
         type: "object",
         properties: {
           request: { type: "string" },
-          destination: { type: "string" },
+          destination: {
+            type: "string",
+            description: "Optional relative Google Drive folder below the plugin-owned 下载 root; do not include a leading slash or filename.",
+          },
           constraints: { type: "object", additionalProperties: true },
         },
         required: ["request"],
@@ -603,3 +604,5 @@ export async function privatePathMatches(pathname: string): Promise<boolean> {
     .join("");
   return actual === PRIVATE_PATH_SHA256;
 }
+import { canonicalDestination } from "../_shared/download_path.ts";
+
