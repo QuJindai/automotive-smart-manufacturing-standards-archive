@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>汽车检测线工艺与产能规划器 · 测试云</title>
+<style>html,body{margin:0;min-height:100%;background:#f4f7fb;font-family:Inter,"Segoe UI","Microsoft YaHei",Arial,sans-serif;color:#14243b}.boot{min-height:100vh;display:grid;place-items:center}.card{background:#fff;border:1px solid #dde5ef;border-radius:14px;padding:28px 34px;box-shadow:0 10px 30px rgba(20,36,59,.08)}.t{font-weight:700;font-size:20px}.s{margin-top:9px;color:#66758a}</style>
+</head>
+<body><div class="boot"><div class="card"><div class="t">汽车检测线工艺与产能规划器</div><div class="s" id="state">正在进入测试云 · 免登录…</div></div></div>
+<script>
+(async()=>{
+ const source='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/inspection-planner-public';
+ const r=await fetch(source,{cache:'no-store'});
+ if(!r.ok) throw new Error('cloud content '+r.status);
+ const h=await r.text();
+ if(!h.includes('汽车检测线工艺与产能规划器')||h.includes('Log in to Vercel')) throw new Error('content contract failed');
+ document.open(); document.write(h); document.close();
+})().catch(e=>{document.getElementById('state').textContent='测试云加载失败：'+e.message;console.error(e)});
+</script></body></html>
