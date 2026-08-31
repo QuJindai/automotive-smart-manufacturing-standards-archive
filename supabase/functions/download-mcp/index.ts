@@ -29,7 +29,7 @@ const ISSUER = "https://token.actions.githubusercontent.com";
 const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks`));
 const SMALL_LIMIT = 100 * 1024 * 1024;
 const MCP_PROTOCOL = "2025-06-18";
-const SERVER_VERSION = "0.4.1-queue-drain-schema";
+const SERVER_VERSION = "0.4.2-destination-validation";
 const EXECUTOR_LEASE_MS = 20 * 60_000;
 
 const securitySchemes = [{ type: "noauth" }];
@@ -446,4 +446,5 @@ Deno.serve(async (req) => {
     }, true));
   }
 });
+
 
