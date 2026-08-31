@@ -9,7 +9,7 @@
 <body><div class="boot"><div class="card"><div class="t">汽车检测线工艺与产能规划器</div><div class="s" id="state">正在进入测试云 · 免登录…</div></div></div>
 <script>
 (async()=>{
- const source='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/inspection-planner-public/content';
+ const source='https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/inspection-planner-public';
  const r=await fetch(source,{cache:'no-store'});
  if(!r.ok) throw new Error('cloud content '+r.status);
  const h=await r.text();
