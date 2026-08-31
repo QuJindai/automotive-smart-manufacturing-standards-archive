@@ -4,9 +4,16 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = (ROOT / ".github/workflows/download-executor.yml").read_text(encoding="utf-8")
+STAGING_ACCEPTANCE = (
+    ROOT / ".github/workflows/download-plugin-staging-acceptance.yml"
+).read_text(encoding="utf-8")
 
 
 class QueueWorkflowContracts(unittest.TestCase):
+    def test_staging_acceptance_requires_current_server_version(self):
+        self.assertIn("0.5.0-github-app-dispatch", STAGING_ACCEPTANCE)
+        self.assertNotIn("0.4.0-autonomous-queue", STAGING_ACCEPTANCE)
+
     def test_schedule_and_manual_recovery_are_enabled(self):
         self.assertIn("cron: '2/5 * * * *'", WORKFLOW)
         self.assertIn("workflow_dispatch:", WORKFLOW)

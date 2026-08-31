@@ -99,6 +99,9 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 type Environment = Record<string, string | undefined>;
 type CachedInstallationToken = { token: string; expiresAtMs: number };
 
+const GITHUB_API_VERSION = "2026-03-10";
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+
 class GitHubAppError extends Error {
   readonly code: string;
   readonly httpStatus?: number;
@@ -130,6 +133,7 @@ export class GitHubAppDispatcher {
   private readonly request: FetchLike;
   private readonly clock: () => number;
   private readonly webcrypto: Crypto;
+  private readonly requestTimeoutMs: number;
 
   constructor(input: {
     environment: Environment;
@@ -140,6 +144,7 @@ export class GitHubAppDispatcher {
     fetch: FetchLike;
     now: () => number;
     webcrypto: Crypto;
+    requestTimeoutMs?: number;
   }) {
     this.environment = input.environment;
     this.owner = input.owner;
@@ -149,6 +154,11 @@ export class GitHubAppDispatcher {
     this.request = input.fetch;
     this.clock = input.now;
     this.webcrypto = input.webcrypto;
+    const requestTimeoutMs = input.requestTimeoutMs;
+    this.requestTimeoutMs = typeof requestTimeoutMs === "number" &&
+        Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0
+      ? Math.floor(requestTimeoutMs)
+      : DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   async dispatch(): Promise<ExecutorDispatchEvidence> {
@@ -160,7 +170,7 @@ export class GitHubAppDispatcher {
         token = await this.installationToken();
         response = await this.dispatchWith(token);
       }
-      if (!response.ok) {
+      if (response.status !== 200 && response.status !== 204) {
         return fallback("GITHUB_APP_WORKFLOW_DISPATCH_FAILED", response.status);
       }
       return await this.successEvidence(response);
@@ -195,8 +205,9 @@ export class GitHubAppDispatcher {
         headers: {
           accept: "application/vnd.github+json",
           authorization: `Bearer ${appJwt}`,
-          "x-github-api-version": "2022-11-28",
+          "x-github-api-version": GITHUB_API_VERSION,
         },
+        signal: AbortSignal.timeout(this.requestTimeoutMs),
       },
     );
     if (!response.ok) throw new GitHubAppError("GITHUB_APP_TOKEN_EXCHANGE_FAILED", response.status);
@@ -227,9 +238,10 @@ export class GitHubAppDispatcher {
           accept: "application/vnd.github+json",
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
-          "x-github-api-version": "2022-11-28",
+          "x-github-api-version": GITHUB_API_VERSION,
         },
         body: JSON.stringify({ ref: this.ref }),
+        signal: AbortSignal.timeout(this.requestTimeoutMs),
       },
     );
   }
@@ -255,15 +267,26 @@ export class GitHubAppDispatcher {
 }
 
 export async function dispatchAfterDurableQueue(
-  job: Record<string, unknown>,
-  persist: (job: Record<string, unknown>) => Promise<Record<string, unknown>>,
-  dispatcher: { dispatch(): Promise<ExecutorDispatchEvidence> },
+  input: {
+    job: Record<string, unknown>;
+    previousStatus: unknown;
+    stateKind: string;
+    persist: (job: Record<string, unknown>) => Promise<Record<string, unknown>>;
+    dispatcher: { dispatch(): Promise<ExecutorDispatchEvidence> };
+  },
 ): Promise<Record<string, unknown>> {
-  const persisted = await persist(job);
-  if (persisted.status !== "QUEUED") return persisted;
+  const persisted = await input.persist(input.job);
+  const enteredQueue = persisted.status === "QUEUED" && input.previousStatus !== "QUEUED";
+  if (!enteredQueue) return persisted;
+  if (input.stateKind !== "download_job") {
+    return {
+      ...persisted,
+      executor_dispatch: fallback("GITHUB_APP_DISPATCH_DISABLED_FOR_STAGING"),
+    };
+  }
   let evidence: ExecutorDispatchEvidence;
   try {
-    evidence = await dispatcher.dispatch();
+    evidence = await input.dispatcher.dispatch();
   } catch {
     evidence = fallback("GITHUB_APP_DISPATCH_FAILED");
   }

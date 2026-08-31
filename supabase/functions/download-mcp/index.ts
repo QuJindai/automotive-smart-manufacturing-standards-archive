@@ -8,7 +8,6 @@ import {
   buildToolDefinitions,
   downloadMcpSubpath,
   downloadStateKind,
-  isDispatchEligibleTransition,
   isClaimEligible,
   privatePathMatches,
   requireText,
@@ -210,33 +209,29 @@ async function claimNextJob(stateKind: string) {
 async function start(args: Record<string, unknown>, stateKind: string) {
   const id = `download-${crypto.randomUUID().replaceAll("-", "")}`;
   const job = buildInitialJob(args, new Date().toISOString(), id);
-  if (!isDispatchEligibleTransition(null, job.status)) {
-    await createJob(job, stateKind);
-    return job;
-  }
-  return dispatchAfterDurableQueue(
+  return dispatchAfterDurableQueue({
     job,
-    async (persisted) => {
+    previousStatus: null,
+    stateKind,
+    persist: async (persisted) => {
       await createJob(persisted, stateKind);
       return persisted;
     },
-    GITHUB_APP_DISPATCHER,
-  );
+    dispatcher: GITHUB_APP_DISPATCHER,
+  });
 }
 
 async function resolveSources(args: Record<string, unknown>, stateKind: string) {
   const id = requireText(args.download_id, "download_id");
   const row = await getJob(id, stateKind);
   const job = applySourceResolution(row.payload, args, new Date().toISOString());
-  if (isDispatchEligibleTransition(row.payload.status, job.status)) {
-    return dispatchAfterDurableQueue(
-      job,
-      async (persisted) => (await updateJob(id, row.revision, persisted, stateKind)).payload,
-      GITHUB_APP_DISPATCHER,
-    );
-  }
-  await updateJob(id, row.revision, job, stateKind);
-  return (await getJob(id, stateKind)).payload;
+  return dispatchAfterDurableQueue({
+    job,
+    previousStatus: row.payload.status,
+    stateKind,
+    persist: async (persisted) => (await updateJob(id, row.revision, persisted, stateKind)).payload,
+    dispatcher: GITHUB_APP_DISPATCHER,
+  });
 }
 
 function mergeRefs(left: unknown, right: unknown) {
@@ -310,15 +305,13 @@ async function retry(id: string, stateKind: string) {
   job.next_action = { action: "WAIT_EXECUTOR", required: false, retry_after_seconds: 300 };
   job.executor = null;
   job.updated_at = new Date().toISOString();
-  if (isDispatchEligibleTransition(row.payload.status, job.status)) {
-    return dispatchAfterDurableQueue(
-      job,
-      async (persisted) => (await updateJob(id, row.revision, persisted, stateKind)).payload,
-      GITHUB_APP_DISPATCHER,
-    );
-  }
-  await updateJob(id, row.revision, job, stateKind);
-  return (await getJob(id, stateKind)).payload;
+  return dispatchAfterDurableQueue({
+    job,
+    previousStatus: row.payload.status,
+    stateKind,
+    persist: async (persisted) => (await updateJob(id, row.revision, persisted, stateKind)).payload,
+    dispatcher: GITHUB_APP_DISPATCHER,
+  });
 }
 
 async function finalize(id: string, allowPartial = false, stateKind: string) {
