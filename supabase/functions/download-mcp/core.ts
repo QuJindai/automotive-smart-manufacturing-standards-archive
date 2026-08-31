@@ -301,6 +301,10 @@ export function applySourceResolution(
   return next;
 }
 
+export function isDispatchEligibleTransition(previousStatus: unknown, nextStatus: unknown): boolean {
+  return nextStatus === "QUEUED" && previousStatus !== "QUEUED";
+}
+
 export function isClaimEligible(job: Record<string, any>, nowMs: number): boolean {
   if (job.status === "QUEUED") return true;
   const expires = Date.parse(String(job.executor?.claim_expires_at ?? ""));
@@ -480,6 +484,34 @@ export const jobOutputSchema = {
     unresolved: { type: "array", items: { type: "object", additionalProperties: true } },
     next_action: nextActionSchema,
     retryable: { type: "boolean" },
+    executor_dispatch: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            mechanism: { const: "github_app" },
+            status: { const: "DISPATCHED" },
+            http_status: { type: "integer" },
+            workflow_run_id: { type: "integer" },
+            run_url: { type: "string" },
+          },
+          required: ["mechanism", "status", "http_status"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            mechanism: { const: "github_app" },
+            status: { const: "FALLBACK_POLLING" },
+            error_code: { type: "string" },
+            http_status: { type: "integer" },
+            retry_after_seconds: { const: 300 },
+          },
+          required: ["mechanism", "status", "error_code", "retry_after_seconds"],
+          additionalProperties: false,
+        },
+      ],
+    },
   },
   required: [
     "download_id",
