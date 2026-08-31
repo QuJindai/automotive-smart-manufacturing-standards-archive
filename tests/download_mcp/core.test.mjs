@@ -59,6 +59,33 @@ test("tool list exposes source resolution and output schemas", () => {
   assert.ok(tools.every((tool) => tool.outputSchema?.type === "object"));
 });
 
+test("source resolution schema documents every accepted source field", () => {
+  const tool = buildToolDefinitions().find(({ name }) => name === "resolve_download_sources");
+  const item = tool.inputSchema.properties.sources.items;
+
+  assert.deepEqual(item.required, [
+    "source_url",
+    "filename",
+    "official",
+    "redistributable",
+  ]);
+  assert.deepEqual(Object.keys(item.properties), [
+    "requested_item",
+    "source_url",
+    "filename",
+    "license_class",
+    "official",
+    "redistributable",
+    "expected_size_bytes",
+    "expected_sha256",
+  ]);
+  assert.equal(item.properties.source_url.format, "uri");
+  assert.equal(item.properties.official.const, true);
+  assert.equal(item.properties.redistributable.const, true);
+  assert.equal(item.properties.expected_sha256.pattern, "^[A-Fa-f0-9]{64}$");
+  assert.equal(item.additionalProperties, false);
+});
+
 test("private MCP path compares by hash without embedding the raw capability", async () => {
   assert.equal(await privatePathMatches("/mcp/not-the-capability"), false);
 });

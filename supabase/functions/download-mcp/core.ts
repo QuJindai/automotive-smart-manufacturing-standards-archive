@@ -528,8 +528,38 @@ export function buildToolDefinitions() {
         type: "object",
         properties: {
           download_id: { type: "string" },
-          sources: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 20 },
-          unresolved: { type: "array", items: { type: "object", additionalProperties: true } },
+          sources: {
+            type: "array",
+            description: "Official HTTPS files whose public redistribution is explicitly permitted.",
+            items: {
+              type: "object",
+              properties: {
+                requested_item: { type: "string", description: "Original document name or standard number." },
+                source_url: { type: "string", format: "uri", description: "Direct public HTTPS download URL." },
+                filename: { type: "string", description: "Safe destination filename including its extension." },
+                license_class: { type: "string", description: "Short redistribution basis, license, or public-document class." },
+                official: { type: "boolean", const: true, description: "Must be true; only official sources are accepted." },
+                redistributable: { type: "boolean", const: true, description: "Must be true after checking public redistribution rights." },
+                expected_size_bytes: { type: "integer", minimum: 1 },
+                expected_sha256: { type: "string", pattern: "^[A-Fa-f0-9]{64}$" },
+              },
+              required: ["source_url", "filename", "official", "redistributable"],
+              additionalProperties: false,
+            },
+            maxItems: 20,
+          },
+          unresolved: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                requested_item: { type: "string" },
+                reason: { type: "string" },
+              },
+              required: ["requested_item", "reason"],
+              additionalProperties: false,
+            },
+          },
         },
         required: ["download_id", "sources"],
         additionalProperties: false,

@@ -11,6 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: read
   id-token: write
 
@@ -334,4 +335,14 @@ jobs:
           assert r.get('download_id')
           print('EXECUTOR_RESULT_SUBMIT=PASS',r['download_id'],r.get('status'))
           PY
+
+      - name: Continue draining queued downloads
+        if: always() && steps.descriptor.outputs.found == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run download-executor.yml --ref main
+          echo 'DOWNLOAD_QUEUE_CONTINUATION=DISPATCHED'
 

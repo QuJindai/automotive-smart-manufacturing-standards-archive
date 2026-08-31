@@ -33,6 +33,13 @@ class QueueWorkflowContracts(unittest.TestCase):
             8,
         )
 
+    def test_completed_claim_kicks_the_next_queue_run_without_a_long_lived_secret(self):
+        self.assertIn("actions: write", WORKFLOW)
+        self.assertIn("name: Continue draining queued downloads", WORKFLOW)
+        self.assertIn("if: always() && steps.descriptor.outputs.found == 'true'", WORKFLOW)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", WORKFLOW)
+        self.assertIn("gh workflow run download-executor.yml --ref main", WORKFLOW)
+
 
 if __name__ == "__main__":
     unittest.main()
