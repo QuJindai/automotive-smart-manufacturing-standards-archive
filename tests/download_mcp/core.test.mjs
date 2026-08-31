@@ -45,6 +45,27 @@ test("name-only request creates a resolving job", () => {
   assert.equal(job.next_action.action, "RESOLVE_SOURCES");
 });
 
+test("destination is validated and canonicalized before a job can enter the queue", () => {
+  const job = buildInitialJob(
+    {
+      request: "https://example.org/spec.pdf",
+      destination: "Google Drive/下载/标准验收/NIST",
+    },
+    NOW,
+    "download-destination",
+  );
+
+  assert.equal(job.destination, "Google Drive/下载/标准验收/NIST");
+  assert.throws(() => buildInitialJob(
+    {
+      request: "https://example.org/spec.pdf",
+      destination: "/下载插件测试/NIST.AI.100-1.pdf",
+    },
+    NOW,
+    "download-absolute-destination",
+  ), /absolute Drive destination rejected/);
+});
+
 test("tool list exposes source resolution and output schemas", () => {
   const tools = buildToolDefinitions();
 
@@ -60,7 +81,8 @@ test("tool list exposes source resolution and output schemas", () => {
 });
 
 test("source resolution schema documents every accepted source field", () => {
-  const tool = buildToolDefinitions().find(({ name }) => name === "resolve_download_sources");
+  const tools = buildToolDefinitions();
+  const tool = tools.find(({ name }) => name === "resolve_download_sources");
   const item = tool.inputSchema.properties.sources.items;
 
   assert.deepEqual(item.required, [
@@ -84,6 +106,10 @@ test("source resolution schema documents every accepted source field", () => {
   assert.equal(item.properties.redistributable.const, true);
   assert.equal(item.properties.expected_sha256.pattern, "^[A-Fa-f0-9]{64}$");
   assert.equal(item.additionalProperties, false);
+  assert.match(
+    tools.find(({ name }) => name === "start_download").inputSchema.properties.destination.description,
+    /relative Google Drive folder.*do not include a leading slash or filename/,
+  );
 });
 
 test("private MCP path compares by hash without embedding the raw capability", async () => {
@@ -346,3 +372,4 @@ test("missing Drive evidence cannot complete", () => {
 
   assert.notEqual(next.status, "COMPLETED");
 });
+
