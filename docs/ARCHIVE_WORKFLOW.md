@@ -8,7 +8,7 @@ GitHub is only the temporary network/compute relay. Google Drive is the authorit
 
 ## ChatGPT plugin queue
 
-Direct HTTPS jobs enter `QUEUED`. Name- or number-only jobs remain `RESOLVING` until web Chat submits reviewed official/public sources through `resolve_download_sources`. The GitHub executor claims one queued job every five minutes using repository-, branch-, and workflow-bound OIDC. A successful byte/hash/Drive-verified upload completes automatically; no descriptor commit or manual finalize call is part of normal operation.
+Direct HTTPS jobs enter `QUEUED`. Name- or number-only jobs remain `RESOLVING` until web Chat submits reviewed official/public sources through `resolve_download_sources`. When a job first enters `QUEUED`, a private repository-scoped GitHub App immediately dispatches the executor workflow. If App dispatch fails, the durable job remains queued for the existing five-minute repository-, branch-, and workflow-bound OIDC polling path. A successful byte/hash/Drive-verified upload completes automatically; no PAT, descriptor commit, content permission, or manual finalize call is part of normal operation.
 
 All destinations are relative to the plugin-owned Drive folder `下载`. For example, `Google Drive/A/B` is archived as `下载/A/B`. Absolute paths, traversal, control characters, paths deeper than eight segments and segments longer than 100 characters are rejected.
 

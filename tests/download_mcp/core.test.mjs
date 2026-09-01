@@ -10,6 +10,7 @@ import {
   buildToolDefinitions,
   downloadMcpSubpath,
   downloadStateKind,
+  isDispatchEligibleTransition,
   isClaimEligible,
   privatePathMatches,
 } from "../../supabase/functions/download-mcp/core.ts";
@@ -78,6 +79,17 @@ test("tool list exposes source resolution and output schemas", () => {
     "finalize_download",
   ]);
   assert.ok(tools.every((tool) => tool.outputSchema?.type === "object"));
+});
+
+test("job outputs permit only sanitized GitHub App dispatch evidence", () => {
+  const schema = buildToolDefinitions()[0].outputSchema.properties.executor_dispatch;
+
+  assert.deepEqual(schema.anyOf.map((entry) => entry.properties.status.const), [
+    "DISPATCHED",
+    "FALLBACK_POLLING",
+  ]);
+  assert.equal(schema.anyOf[0].properties.mechanism.const, "github_app");
+  assert.equal(schema.anyOf[1].properties.retry_after_seconds.const, 300);
 });
 
 test("source resolution schema documents every accepted source field", () => {
@@ -197,6 +209,16 @@ test("official public resolution queues the same job", () => {
   assert.equal(resolved.download_id, original.download_id);
   assert.equal(resolved.status, "QUEUED");
   assert.equal(resolved.assets[0].filename, "idta.pdf");
+});
+
+test("only new transitions into QUEUED are eligible for immediate dispatch", () => {
+  assert.equal(isDispatchEligibleTransition(null, "QUEUED"), true);
+  assert.equal(isDispatchEligibleTransition("RESOLVING", "QUEUED"), true);
+  assert.equal(isDispatchEligibleTransition("FETCHING", "QUEUED"), true);
+
+  assert.equal(isDispatchEligibleTransition(null, "RESOLVING"), false);
+  assert.equal(isDispatchEligibleTransition("RESOLVING", "BLOCKED"), false);
+  assert.equal(isDispatchEligibleTransition("QUEUED", "QUEUED"), false);
 });
 
 test("zero legal sources blocks instead of hanging", () => {

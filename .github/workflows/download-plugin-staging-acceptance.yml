@@ -29,7 +29,7 @@ jobs:
           init=json.load(open('init.json'))
           tools=json.load(open('tools.json'))
           assert init['result']['protocolVersion']=='2025-06-18'
-          assert init['result']['serverInfo']=={'name':'下载','version':'0.4.0-autonomous-queue'}
+          assert init['result']['serverInfo']=={'name':'下载','version':'0.5.0-github-app-dispatch'}
           definitions=tools['result']['tools']
           names=[item['name'] for item in definitions]
           assert names==[

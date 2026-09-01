@@ -12,6 +12,7 @@ import {
   privatePathMatches,
   requireText,
 } from "./core.ts";
+import { dispatchAfterDurableQueue, GitHubAppDispatcher } from "./github_app.ts";
 import {
   hydrateSensitiveAssets,
   redactJob,
@@ -29,8 +30,22 @@ const ISSUER = "https://token.actions.githubusercontent.com";
 const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks`));
 const SMALL_LIMIT = 100 * 1024 * 1024;
 const MCP_PROTOCOL = "2025-06-18";
-const SERVER_VERSION = "0.4.2-destination-validation";
+const SERVER_VERSION = "0.5.0-github-app-dispatch";
 const EXECUTOR_LEASE_MS = 20 * 60_000;
+const GITHUB_APP_DISPATCHER = new GitHubAppDispatcher({
+  environment: {
+    DOWNLOAD_GITHUB_APP_ID: Deno.env.get("DOWNLOAD_GITHUB_APP_ID"),
+    DOWNLOAD_GITHUB_APP_INSTALLATION_ID: Deno.env.get("DOWNLOAD_GITHUB_APP_INSTALLATION_ID"),
+    DOWNLOAD_GITHUB_APP_PRIVATE_KEY: Deno.env.get("DOWNLOAD_GITHUB_APP_PRIVATE_KEY"),
+  },
+  owner: "QuJindai",
+  repository: "automotive-smart-manufacturing-standards-archive",
+  workflow: "download-executor.yml",
+  ref: "main",
+  fetch,
+  now: () => Date.now(),
+  webcrypto: crypto,
+});
 
 const securitySchemes = [{ type: "noauth" }];
 const toolBase = { _meta: { securitySchemes }, securitySchemes };
@@ -194,16 +209,29 @@ async function claimNextJob(stateKind: string) {
 async function start(args: Record<string, unknown>, stateKind: string) {
   const id = `download-${crypto.randomUUID().replaceAll("-", "")}`;
   const job = buildInitialJob(args, new Date().toISOString(), id);
-  await createJob(job, stateKind);
-  return job;
+  return dispatchAfterDurableQueue({
+    job,
+    previousStatus: null,
+    stateKind,
+    persist: async (persisted) => {
+      await createJob(persisted, stateKind);
+      return persisted;
+    },
+    dispatcher: GITHUB_APP_DISPATCHER,
+  });
 }
 
 async function resolveSources(args: Record<string, unknown>, stateKind: string) {
   const id = requireText(args.download_id, "download_id");
   const row = await getJob(id, stateKind);
   const job = applySourceResolution(row.payload, args, new Date().toISOString());
-  await updateJob(id, row.revision, job, stateKind);
-  return (await getJob(id, stateKind)).payload;
+  return dispatchAfterDurableQueue({
+    job,
+    previousStatus: row.payload.status,
+    stateKind,
+    persist: async (persisted) => (await updateJob(id, row.revision, persisted, stateKind)).payload,
+    dispatcher: GITHUB_APP_DISPATCHER,
+  });
 }
 
 function mergeRefs(left: unknown, right: unknown) {
@@ -277,8 +305,13 @@ async function retry(id: string, stateKind: string) {
   job.next_action = { action: "WAIT_EXECUTOR", required: false, retry_after_seconds: 300 };
   job.executor = null;
   job.updated_at = new Date().toISOString();
-  await updateJob(id, row.revision, job, stateKind);
-  return (await getJob(id, stateKind)).payload;
+  return dispatchAfterDurableQueue({
+    job,
+    previousStatus: row.payload.status,
+    stateKind,
+    persist: async (persisted) => (await updateJob(id, row.revision, persisted, stateKind)).payload,
+    dispatcher: GITHUB_APP_DISPATCHER,
+  });
 }
 
 async function finalize(id: string, allowPartial = false, stateKind: string) {
