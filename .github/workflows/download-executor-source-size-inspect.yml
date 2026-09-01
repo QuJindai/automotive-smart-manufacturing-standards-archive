@@ -1,0 +1,51 @@
+name: Download Executor Source Size Inspect
+
+on:
+  push:
+    paths:
+      - '.github/workflows/download-executor-source-size-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: Locate source-size guard
+        run: |
+          set -euo pipefail
+          mkdir -p ops
+          python3 - <<'PY'
+          from pathlib import Path
+          needle = 'source size unavailable'
+          out=[]
+          for p in Path('.').rglob('*'):
+              if not p.is_file() or '.git/' in p.as_posix() or p.as_posix().startswith('ops/'):
+                  continue
+              try:
+                  text=p.read_text(encoding='utf-8')
+              except Exception:
+                  continue
+              lines=text.splitlines()
+              for i,line in enumerate(lines):
+                  if needle in line:
+                      lo=max(0,i-35); hi=min(len(lines),i+36)
+                      out.append(f'FILE={p.as_posix()} LINE={i+1}\n' + '\n'.join(f'{j+1:05d}: {lines[j]}' for j in range(lo,hi)))
+          Path('ops/source-size-context.txt').write_text('\n\n---MATCH---\n\n'.join(out) if out else 'NO_MATCH', encoding='utf-8')
+          PY
+      - name: Commit inspection context
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ops/source-size-context.txt
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'ops: capture source-size guard context'
+          git push
