@@ -1,0 +1,127 @@
+FILE=scripts/download_executor.py LINE=329
+00294:     headers = {
+00295:         "Content-Length": str(len(chunk)),
+00296:         "Content-Type": "application/octet-stream",
+00297:         "Content-Range": f"bytes {start}-{end}/{total}",
+00298:     }
+00299:     try:
+00300:         with _request(session_url, method="PUT", headers=headers, data=chunk, timeout=300) as response:
+00301:             body = response.read()
+00302:             if response.status not in {200, 201}:
+00303:                 raise RuntimeError(f"unexpected Drive status {response.status}")
+00304:             data = json.loads(body.decode("utf-8")) if body else {}
+00305:             return end + 1, data
+00306:     except urllib.error.HTTPError as exc:
+00307:         if exc.code != 308:
+00308:             raise
+00309:         range_header = exc.headers.get("Range", "")
+00310:         match = re.search(r"bytes=0-(\d+)", range_header)
+00311:         next_offset = int(match.group(1)) + 1 if match else end + 1
+00312:         return next_offset, None
+00313: 
+00314: 
+00315: def _source_prefix(url: str) -> bytes:
+00316:     with _request(url, headers={"Range": "bytes=0-63"}, timeout=60) as response:
+00317:         if response.status not in {200, 206}:
+00318:             raise RuntimeError(f"source prefix status {response.status}")
+00319:         return response.read(64)
+00320: 
+00321: 
+00322: def upload_direct_resumable(asset: dict, session_url: str, chunk_size: int = DEFAULT_CHUNK) -> AssetResult:
+00323:     """Stream a source into Drive using the supplied one-file resumable session."""
+00324:     asset_id = str(asset.get("asset_id") or "")
+00325:     filename = str(asset.get("filename") or f"{asset_id}.bin")
+00326:     url = str(asset.get("source_url") or "")
+00327:     total = int(asset.get("expected_size_bytes") or 0) or source_size(url)
+00328:     if not total:
+00329:         return AssetResult(asset_id, filename, "FAIL", 0, None, "drive-resumable", "source size unavailable", source_url_redacted=redact_url(url))
+00330:     if chunk_size % DRIVE_ALIGNMENT:
+00331:         chunk_size = max(DRIVE_ALIGNMENT, (chunk_size // DRIVE_ALIGNMENT) * DRIVE_ALIGNMENT)
+00332:     try:
+00333:         offset = query_drive_offset(session_url, total)
+00334:         if offset >= total:
+00335:             validate_magic_prefix(_source_prefix(url), asset.get("kind"))
+00336:             return AssetResult(asset_id, filename, "PASS", total, asset.get("expected_sha256"), "drive-resumable-resume", drive_ref={"size": total})
+00337:         headers = {"Range": f"bytes={offset}-"} if offset else {}
+00338:         with _request(url, headers=headers, timeout=300) as source:
+00339:             if offset and source.status != 206:
+00340:                 raise RuntimeError("source ignored Range during resume")
+00341:             digest = hashlib.sha256()
+00342:             prefix_checked = False
+00343:             if offset:
+00344:                 with _request(url, headers={"Range": f"bytes=0-{offset-1}"}, timeout=300) as prefix_source:
+00345:                     if prefix_source.status != 206:
+00346:                         raise RuntimeError("source does not support deterministic Range hashing")
+00347:                     while True:
+00348:                         block = prefix_source.read(DEFAULT_CHUNK)
+00349:                         if not block:
+00350:                             break
+00351:                         if not prefix_checked:
+00352:                             validate_magic_prefix(block, asset.get("kind"))
+00353:                             prefix_checked = True
+00354:                         digest.update(block)
+00355:             position = offset
+00356:             final_drive = None
+00357:             while position < total:
+00358:                 need = min(chunk_size, total - position)
+00359:                 buf = source.read(need)
+00360:                 if not buf:
+00361:                     raise IOError("unexpected source EOF")
+00362:                 while len(buf) < need:
+00363:                     more = source.read(need - len(buf))
+00364:                     if not more:
+
+---MATCH---
+
+FILE=.github/workflows/download-executor-source-size-inspect.yml LINE=25
+00001: name: Download Executor Source Size Inspect
+00002: 
+00003: on:
+00004:   push:
+00005:     paths:
+00006:       - '.github/workflows/download-executor-source-size-inspect.yml'
+00007:   workflow_dispatch:
+00008: 
+00009: permissions:
+00010:   contents: write
+00011: 
+00012: jobs:
+00013:   inspect:
+00014:     runs-on: ubuntu-latest
+00015:     steps:
+00016:       - uses: actions/checkout@v6
+00017:         with:
+00018:           fetch-depth: 1
+00019:       - name: Locate source-size guard
+00020:         run: |
+00021:           set -euo pipefail
+00022:           mkdir -p ops
+00023:           python3 - <<'PY'
+00024:           from pathlib import Path
+00025:           needle = 'source size unavailable'
+00026:           out=[]
+00027:           for p in Path('.').rglob('*'):
+00028:               if not p.is_file() or '.git/' in p.as_posix() or p.as_posix().startswith('ops/'):
+00029:                   continue
+00030:               try:
+00031:                   text=p.read_text(encoding='utf-8')
+00032:               except Exception:
+00033:                   continue
+00034:               lines=text.splitlines()
+00035:               for i,line in enumerate(lines):
+00036:                   if needle in line:
+00037:                       lo=max(0,i-35); hi=min(len(lines),i+36)
+00038:                       out.append(f'FILE={p.as_posix()} LINE={i+1}\n' + '\n'.join(f'{j+1:05d}: {lines[j]}' for j in range(lo,hi)))
+00039:           Path('ops/source-size-context.txt').write_text('\n\n---MATCH---\n\n'.join(out) if out else 'NO_MATCH', encoding='utf-8')
+00040:           PY
+00041:       - name: Commit inspection context
+00042:         env:
+00043:           GH_TOKEN: ${{ github.token }}
+00044:         run: |
+00045:           set -euo pipefail
+00046:           git config user.name github-actions[bot]
+00047:           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+00048:           git add ops/source-size-context.txt
+00049:           if git diff --cached --quiet; then exit 0; fi
+00050:           git commit -m 'ops: capture source-size guard context'
+00051:           git push
