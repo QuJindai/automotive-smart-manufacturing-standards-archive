@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Fetch one official GB PDF over HTTP/1.0
+      - name: Fetch one official GB PDF tolerating bad Content-Length
         shell: bash
         run: |
           set -euo pipefail
@@ -23,36 +23,18 @@ jobs:
           ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36'
           rm -f GB_15082-2008.pdf cookies.txt
 
-          # Historical gb688 behavior can emit an HTTP/1.1 Content-Length/body mismatch.
-          # Force HTTP/1.0 so curl reads until EOF instead of rejecting the response framing.
-          curl --http1.0 -fSL --retry 3 --retry-delay 2 -A "$ua" \
-            "$base/viewGb?hcno=$hcno" -o GB_15082-2008.pdf || true
+          curl --http1.1 --ignore-content-length -fSL --retry 3 --retry-delay 2 \
+            -H 'Accept-Encoding: identity' -A "$ua" \
+            -c cookies.txt -b cookies.txt \
+            "$base/showGb?type=download&hcno=$hcno" -o /tmp/gb688-landing.html || true
 
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('GB_15082-2008.pdf')
-          data=p.read_bytes() if p.exists() else b''
-          print(f'direct_http10_bytes={len(data)} magic={data[:8]!r}')
-          raise SystemExit(0 if len(data) >= 10_000 and data.startswith(b'%PDF-') else 10)
-          PY
-        continue-on-error: true
-        id: direct
-
-      - name: Retry with download-page session over HTTP/1.0
-        if: steps.direct.outcome == 'failure'
-        shell: bash
-        run: |
-          set -euo pipefail
-          hcno='8676EBC34F75CFFDF7EA4BC12517A007'
-          base='https://c.gb688.cn/bzgk/gb'
-          ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36'
-          curl --http1.0 -fSL --retry 3 --retry-delay 2 -A "$ua" -c cookies.txt -b cookies.txt \
-            "$base/showGb?type=download&hcno=$hcno" -o /tmp/gb688-landing.html
-          curl --http1.0 -fSL --retry 3 --retry-delay 2 -A "$ua" -c cookies.txt -b cookies.txt \
+          curl --http1.1 --ignore-content-length -fSL --retry 3 --retry-delay 2 \
+            -H 'Accept-Encoding: identity' -A "$ua" \
+            -c cookies.txt -b cookies.txt \
             -e "$base/showGb?type=download&hcno=$hcno" \
             "$base/viewGb?hcno=$hcno" -o GB_15082-2008.pdf
 
-      - name: Validate PDF bytes
+      - name: Validate downloaded body
         shell: bash
         run: |
           set -euo pipefail
@@ -60,17 +42,17 @@ jobs:
           from pathlib import Path
           p=Path('GB_15082-2008.pdf')
           data=p.read_bytes()
-          print(f'bytes={len(data)} magic={data[:8]!r}')
+          print(f'bytes={len(data)} magic={data[:16]!r}')
           if len(data) < 10_000:
-              raise SystemExit('FAIL: response too small to be a standard PDF')
+              raise SystemExit('FAIL: response too small')
           if not data.startswith(b'%PDF-'):
-              raise SystemExit('FAIL: response is not a PDF')
+              raise SystemExit('FAIL: body is not PDF')
           PY
           sha256sum GB_15082-2008.pdf
 
       - name: Preserve validated probe evidence
         uses: actions/upload-artifact@v4
         with:
-          name: gb688-direct-probe-http10
+          name: gb688-direct-probe-ignore-length
           path: GB_15082-2008.pdf
           retention-days: 1
