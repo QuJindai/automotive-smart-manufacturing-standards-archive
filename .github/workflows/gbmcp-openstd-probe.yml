@@ -1,0 +1,60 @@
+name: GBMCP OpenSTD Probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gbmcp-openstd-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install GBMCP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install 'git+https://github.com/LoyDgIk/GBMCP.git'
+
+      - name: Download GB 15082-2008 from current OpenSTD flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gbmcp-probe
+          python - <<'PY'
+          import asyncio
+          from pathlib import Path
+          from gbmcp.service import download_standard
+
+          async def main():
+              out = Path('/tmp/gbmcp-probe/GB_15082-2008.pdf')
+              target = 'https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=8676EBC34F75CFFDF7EA4BC12517A007'
+              result = await download_standard(
+                  target,
+                  output_dir=str(out.parent),
+                  output_file=str(out),
+                  overwrite=True,
+              )
+              print('download_result=', result)
+              data = out.read_bytes()
+              print('bytes=', len(data), 'magic=', repr(data[:8]))
+              if len(data) < 10_000:
+                  raise SystemExit('FAIL: downloaded body is too small')
+              if not data.startswith(b'%PDF-'):
+                  raise SystemExit('FAIL: downloaded body is not PDF')
+
+          asyncio.run(main())
+          PY
+          sha256sum /tmp/gbmcp-probe/GB_15082-2008.pdf
+
+      - name: Preserve private execution evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: gbmcp-openstd-gb15082-probe
+          path: /tmp/gbmcp-probe/GB_15082-2008.pdf
+          retention-days: 1
