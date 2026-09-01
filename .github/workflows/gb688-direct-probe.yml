@@ -1,0 +1,45 @@
+name: GB688 Direct PDF Probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gb688-direct-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch one official GB PDF with session
+        shell: bash
+        run: |
+          set -euo pipefail
+          hcno='8676EBC34F75CFFDF7EA4BC12517A007'
+          base='https://c.gb688.cn/bzgk/gb'
+          ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36'
+          curl -fsSL --retry 3 --retry-delay 2 -A "$ua" -c cookies.txt -b cookies.txt \
+            "$base/showGb?type=download&hcno=$hcno" -o landing.bin
+          curl -fsSL --retry 3 --retry-delay 2 -A "$ua" -c cookies.txt -b cookies.txt \
+            -e "$base/showGb?type=download&hcno=$hcno" \
+            "$base/viewGb?hcno=$hcno" -o GB_15082-2008.pdf
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('GB_15082-2008.pdf')
+          data=p.read_bytes()
+          print(f'bytes={len(data)} magic={data[:8]!r}')
+          if len(data) < 10_000:
+              raise SystemExit('FAIL: response too small to be a standard PDF')
+          if not data.startswith(b'%PDF-'):
+              raise SystemExit('FAIL: response is not a PDF')
+          PY
+          sha256sum GB_15082-2008.pdf
+      - name: Preserve probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: gb688-direct-probe
+          path: GB_15082-2008.pdf
+          retention-days: 1
