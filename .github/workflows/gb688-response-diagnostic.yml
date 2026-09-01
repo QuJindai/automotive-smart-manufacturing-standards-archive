@@ -1,0 +1,71 @@
+name: GB688 Response Diagnostic
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gb688-response-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Capture response metadata without publishing standard body
+        shell: bash
+        run: |
+          set -uo pipefail
+          hcno='8676EBC34F75CFFDF7EA4BC12517A007'
+          base='https://c.gb688.cn/bzgk/gb'
+          ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36'
+          rm -f /tmp/body.bin /tmp/headers.txt /tmp/cookies.txt probe-meta.txt
+
+          curl --http1.1 --ignore-content-length -sSL \
+            -H 'Accept-Encoding: identity' -A "$ua" \
+            -c /tmp/cookies.txt -b /tmp/cookies.txt \
+            "$base/showGb?type=download&hcno=$hcno" -o /tmp/landing.html
+          landing_rc=$?
+
+          curl --http1.1 --ignore-content-length -sSL \
+            -H 'Accept-Encoding: identity' -A "$ua" \
+            -c /tmp/cookies.txt -b /tmp/cookies.txt \
+            -e "$base/showGb?type=download&hcno=$hcno" \
+            -D /tmp/headers.txt \
+            "$base/viewGb?hcno=$hcno" -o /tmp/body.bin
+          body_rc=$?
+
+          bytes=$(wc -c < /tmp/body.bin 2>/dev/null || echo 0)
+          magic=$(xxd -p -l 32 /tmp/body.bin 2>/dev/null | tr -d '\n' || true)
+          kind=$(file -b /tmp/body.bin 2>/dev/null || true)
+          ctype=$(grep -i '^content-type:' /tmp/headers.txt | tail -n1 | tr -d '\r' || true)
+          clen=$(grep -i '^content-length:' /tmp/headers.txt | tail -n1 | tr -d '\r' || true)
+          crange=$(grep -i '^content-range:' /tmp/headers.txt | tail -n1 | tr -d '\r' || true)
+          status=$(grep '^HTTP/' /tmp/headers.txt | tail -n1 | tr -d '\r' || true)
+          landing_bytes=$(wc -c < /tmp/landing.html 2>/dev/null || echo 0)
+
+          cat > probe-meta.txt <<EOF
+          landing_curl_rc=$landing_rc
+          landing_bytes=$landing_bytes
+          body_curl_rc=$body_rc
+          body_bytes=$bytes
+          body_magic_hex=$magic
+          body_file_type=$kind
+          response_status=$status
+          response_content_type=$ctype
+          response_content_length=$clen
+          response_content_range=$crange
+          EOF
+          cat probe-meta.txt
+
+      - name: Publish metadata-only diagnostic release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='gb688-probe-diag-20260901'
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title 'GB688 probe diagnostics' --notes 'Temporary metadata-only diagnostics; contains no standard body.' --prerelease
+          gh release upload "$tag" probe-meta.txt --clobber
