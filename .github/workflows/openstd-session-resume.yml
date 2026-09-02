@@ -1,0 +1,48 @@
+name: OpenSTD Session Resume Probe
+
+on:
+  push:
+    branches:
+      - test/openstd-session-reuse-clean-20260902
+    paths:
+      - ops/openstd-resume.trigger
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download prepared session artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREPARE_RUN_ID: "33634740926"
+        run: |
+          set -euo pipefail
+          mkdir -p .state/prepared
+          ART_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PREPARE_RUN_ID}/artifacts" --jq '.artifacts[] | select(.expired == false) | .id' | head -n1)"
+          test -n "$ART_ID"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ART_ID}/zip" > /tmp/openstd-session.zip
+          unzip -o /tmp/openstd-session.zip -d .state/prepared
+          find .state/prepared -maxdepth 4 -type f -print
+
+      - name: Submit user captcha and test two standards in same restored session
+        run: |
+          python scripts/openstd_session_resume.py \
+            --artifact-dir .state/prepared \
+            --captcha-file ops/openstd_captcha_answer.txt \
+            --out state/openstd-session-reuse/result-latest.json
+
+      - name: Persist sanitized result
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/openstd-session-reuse/result-latest.json
+          git commit -m "test: persist OpenSTD session reuse result" || exit 0
+          git push origin "HEAD:${GITHUB_REF_NAME}"
