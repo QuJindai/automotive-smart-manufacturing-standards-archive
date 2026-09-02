@@ -1,0 +1,33 @@
+name: OpenSTD Result Reporter
+
+on:
+  push:
+    branches:
+      - test/openstd-session-reuse-clean-20260902
+    paths:
+      - ops/openstd-report.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Emit verdict marker
+        run: |
+          set -euo pipefail
+          VERDICT="$(python - <<'PY'
+import json
+p='state/openstd-session-reuse/result-latest.json'
+print(json.load(open(p, encoding='utf-8'))['verdict'])
+PY
+)"
+          mkdir -p state/openstd-session-reuse/verdicts
+          printf '%s\n' "$VERDICT" > "state/openstd-session-reuse/verdicts/${VERDICT}.trigger"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/openstd-session-reuse/verdicts/
+          git commit -m "test: OpenSTD verdict ${VERDICT}" || exit 0
+          git push origin "HEAD:${GITHUB_REF_NAME}"
