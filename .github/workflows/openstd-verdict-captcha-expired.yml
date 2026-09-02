@@ -1,0 +1,10 @@
+name: OpenSTD Verdict - CAPTCHA REJECTED OR EXPIRED
+on:
+  push:
+    branches: [test/openstd-session-reuse-clean-20260902]
+    paths: [state/openstd-session-reuse/verdicts/CAPTCHA_REJECTED_OR_EXPIRED.trigger]
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo CAPTCHA_REJECTED_OR_EXPIRED
