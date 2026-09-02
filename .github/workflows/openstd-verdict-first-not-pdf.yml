@@ -1,0 +1,10 @@
+name: OpenSTD Verdict - FIRST DOWNLOAD NOT PDF
+on:
+  push:
+    branches: [test/openstd-session-reuse-clean-20260902]
+    paths: [state/openstd-session-reuse/verdicts/VERIFIED_BUT_FIRST_DOWNLOAD_NOT_PDF.trigger]
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo VERIFIED_BUT_FIRST_DOWNLOAD_NOT_PDF
