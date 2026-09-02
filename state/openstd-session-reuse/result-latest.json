@@ -1,0 +1,12 @@
+{
+  "state_file": "cookies-33634740926.json",
+  "cookie_count": 2,
+  "base_url": "https://c.gb688.cn/bzgk/gb/",
+  "parse_errors": [],
+  "captcha_answer_source": "user_provided",
+  "verify": {
+    "ok": false,
+    "error": "SSLError(MaxRetryError('HTTPSConnectionPool(host=\\'c.gb688.cn\\', port=443): Max retries exceeded with url: /bzgk/gb/verifyCode (Caused by SSLError(SSLCertVerificationError(1, \"[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for \\'c.gb688.cn\\'. (_ssl.c:1000)\")))'))"
+  },
+  "verdict": "CAPTCHA_REJECTED_OR_EXPIRED"
+}
