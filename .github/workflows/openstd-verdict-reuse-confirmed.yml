@@ -1,0 +1,10 @@
+name: OpenSTD Verdict - SESSION REUSE CONFIRMED
+on:
+  push:
+    branches: [test/openstd-session-reuse-clean-20260902]
+    paths: [state/openstd-session-reuse/verdicts/SESSION_REUSE_CONFIRMED.trigger]
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo SESSION_REUSE_CONFIRMED
