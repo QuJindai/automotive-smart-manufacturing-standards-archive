@@ -1,0 +1,17 @@
+{
+  "hcno": "8676EBC34F75CFFDF7EA4BC12517A007",
+  "detail_url": "https://openstd.samr.gov.cn/bzgk/std/newGbInfo?hcno=8676EBC34F75CFFDF7EA4BC12517A007",
+  "detail_ok": true,
+  "download_button_present": true,
+  "captcha_reached": true,
+  "captcha_content_type": "image/jpeg",
+  "captcha_bytes": 3945,
+  "captcha_sha256": "18b4b6bdaefbd6c08acd2deecbe640fdd0ede032ba712b365ac046b24b740a83",
+  "pdf_without_captcha": false,
+  "pdf_probe_status": 200,
+  "pdf_probe_content_type": "Content-Type: application/octet-stream",
+  "pdf_probe_bytes": 0,
+  "boundary": "AUTOMATABLE_TO_CAPTCHA_MANUAL_INPUT_REQUIRED",
+  "detail_http_status": 200,
+  "captcha_http_status": 200
+}
