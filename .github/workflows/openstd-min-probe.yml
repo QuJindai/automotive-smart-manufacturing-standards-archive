@@ -1,0 +1,32 @@
+name: OpenSTD Minimal Probe
+
+on:
+  push:
+    branches:
+      - 'test/openstd-min-loop-20260902'
+    paths:
+      - 'scripts/openstd_min_probe.py'
+      - '.github/workflows/openstd-min-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Run bounded OpenSTD probe
+        run: python scripts/openstd_min_probe.py
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstd-min-probe
+          path: artifacts/openstd_min_probe.json
+          if-no-files-found: error
