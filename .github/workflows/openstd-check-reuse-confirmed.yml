@@ -1,0 +1,11 @@
+name: OpenSTD Check - SESSION REUSE CONFIRMED
+on:
+  push:
+    branches: [test/openstd-session-reuse-clean-20260902]
+    paths: [ops/openstd-verdict-check.trigger]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -c "import json; assert json.load(open('state/openstd-session-reuse/result-latest.json', encoding='utf-8'))['verdict'] == 'SESSION_REUSE_CONFIRMED'"
