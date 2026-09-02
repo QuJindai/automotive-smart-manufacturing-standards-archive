@@ -18,12 +18,7 @@ jobs:
       - name: Emit verdict marker
         run: |
           set -euo pipefail
-          VERDICT="$(python - <<'PY'
-import json
-p='state/openstd-session-reuse/result-latest.json'
-print(json.load(open(p, encoding='utf-8'))['verdict'])
-PY
-)"
+          VERDICT="$(python -c "import json; print(json.load(open('state/openstd-session-reuse/result-latest.json', encoding='utf-8'))['verdict'])")"
           mkdir -p state/openstd-session-reuse/verdicts
           printf '%s\n' "$VERDICT" > "state/openstd-session-reuse/verdicts/${VERDICT}.trigger"
           git config user.name "github-actions[bot]"
