@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   probe:
@@ -30,3 +30,15 @@ jobs:
           name: openstd-min-probe
           path: artifacts/openstd_min_probe.json
           if-no-files-found: error
+      - name: Persist probe result on test branch
+        if: success()
+        run: |
+          set -euo pipefail
+          cp artifacts/openstd_min_probe.json OPENSTD_MIN_PROBE_RESULT.json
+          git config user.name 'openstd-probe-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add OPENSTD_MIN_PROBE_RESULT.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'test: persist OpenSTD minimal probe result'
+            git push origin HEAD:test/openstd-min-loop-20260902
+          fi
