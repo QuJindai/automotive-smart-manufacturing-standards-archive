@@ -1,0 +1,24 @@
+name: OpenSTD Captcha Probe
+
+on:
+  push:
+    branches:
+      - 'test/openstd-min-loop-20260902'
+    paths:
+      - 'scripts/openstd_captcha_probe.py'
+      - '.github/workflows/openstd-captcha-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: python scripts/openstd_captcha_probe.py
