@@ -1,0 +1,48 @@
+name: OpenSTD Session Prepare
+
+on:
+  push:
+    branches:
+      - test/openstd-session-reuse-clean-20260902
+    paths:
+      - ops/openstd-prepare.trigger
+      - scripts/openstd_session_prepare.py
+      - .github/workflows/openstd-session-prepare.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Fetch captcha and preserve session
+        run: python scripts/openstd_session_prepare.py
+      - name: Save session cookies privately
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstd-session-${{ github.run_id }}
+          path: state/openstd-session-reuse/cookies-${{ github.run_id }}.json
+          retention-days: 1
+          if-no-files-found: error
+      - name: Publish captcha image to test branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="state/openstd-session-reuse/captcha-${GITHUB_RUN_ID}.png"
+          dst="state/openstd-session-reuse/captcha-${GITHUB_RUN_ID}.png"
+          content="$(base64 -w0 "$src")"
+          gh api "repos/${GITHUB_REPOSITORY}/contents/${dst}" \
+            --method PUT \
+            -f message="test: publish OpenSTD captcha ${GITHUB_RUN_ID}" \
+            -f content="$content" \
+            -f branch="$GITHUB_REF_NAME" >/dev/null
