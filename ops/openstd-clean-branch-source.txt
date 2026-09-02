@@ -1,0 +1,1 @@
+source=test/openstd-min-loop-20260902
