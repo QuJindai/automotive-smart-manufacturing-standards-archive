@@ -16,6 +16,17 @@ Production jobs use state kind `download_job`; staging jobs use `download_job_st
 
 Release downloads in gates of 1, 10, 50 and 200 items. Do not advance a gate unless every prior job has a non-zero byte count, a valid SHA-256, independently verified Drive metadata, the expected nested parent and a terminal non-pending state.
 
+## Generic source transfer
+
+Download Executor 0.3 chooses a transfer path from HTTP capabilities and verified metadata, never from a provider name:
+
+- sources with a known positive size keep the direct Drive resumable path, including deterministic Range-based resume;
+- sources whose size cannot be established by `HEAD`, `Content-Length` or `Content-Range` return the machine-readable code `SOURCE_SIZE_UNKNOWN` and use the existing native/browser fallback chain;
+- a successful fallback download becomes one local, size- and SHA-256-verified snapshot; Drive upload reads that same file and never fetches the source URL again; and
+- static PDFs, GitHub release assets, object storage, CDNs, chunked responses and dynamic APIs therefore share the same executor without host-specific branches.
+
+Unknown-length staging consumes temporary runner disk space. The one-day GitHub artifact remains recovery evidence only; Google Drive remains the authoritative archive after readback verification.
+
 ## Adding a public asset
 
 1. Confirm that the source is official/public and redistribution is permitted.
