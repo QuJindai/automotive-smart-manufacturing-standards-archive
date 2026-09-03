@@ -390,6 +390,46 @@ def upload_direct_resumable(asset: dict, session_url: str, chunk_size: int = DEF
         return AssetResult(asset_id, filename, "FAIL", 0, None, "drive-resumable", str(exc)[:1000], source_url_redacted=redact_url(url))
 
 
+def upload_staged_resumable(staged: AssetResult, asset: dict, session_url: str, chunk_size: int = DEFAULT_CHUNK) -> AssetResult:
+    """Upload one already-downloaded and verified local snapshot to Drive."""
+    asset_id = str(asset.get("asset_id") or staged.asset_id or "")
+    filename = str(asset.get("filename") or staged.filename or f"{asset_id}.bin")
+    url = str(asset.get("source_url") or "")
+    if not staged.artifact_path:
+        return AssetResult(asset_id, filename, "FAIL", 0, None, "drive-resumable-local", "staged artifact path unavailable", source_url_redacted=redact_url(url) if url else None)
+    path = Path(staged.artifact_path)
+    try:
+        total, digest = validate_file(path, asset.get("kind"), staged.bytes if staged.bytes > 0 else None, staged.sha256)
+        if total <= 0:
+            raise ValueError("staged artifact is empty")
+        if chunk_size % DRIVE_ALIGNMENT:
+            chunk_size = max(DRIVE_ALIGNMENT, (chunk_size // DRIVE_ALIGNMENT) * DRIVE_ALIGNMENT)
+        offset = query_drive_offset(session_url, total)
+        if offset > total:
+            raise IOError("Drive offset exceeds staged artifact size")
+        if offset == total:
+            return AssetResult(asset_id, filename, "PASS", total, digest, "drive-resumable-local-resume", drive_ref={"name": filename, "size": total, "sha256": digest}, artifact_path=str(path), source_url_redacted=redact_url(url) if url else None)
+        position = offset
+        final_drive = None
+        with path.open("rb") as source:
+            source.seek(offset)
+            while position < total:
+                need = min(chunk_size, total - position)
+                buf = source.read(need)
+                if not buf:
+                    raise IOError("unexpected staged artifact EOF")
+                next_position, drive_data = _put_drive_chunk(session_url, buf, position, total)
+                if next_position < position + len(buf):
+                    raise IOError("Drive acknowledged fewer bytes than supplied")
+                position = next_position
+                if drive_data is not None:
+                    final_drive = drive_data
+        drive_ref = {"file_id": str((final_drive or {}).get("id") or ""), "name": str((final_drive or {}).get("name") or filename), "size": total, "sha256": digest, "web_url": (final_drive or {}).get("webViewLink")}
+        return AssetResult(asset_id, filename, "PASS", total, digest, "drive-resumable-local", drive_ref=drive_ref, artifact_path=str(path), source_url_redacted=redact_url(url) if url else None)
+    except Exception as exc:
+        return AssetResult(asset_id, filename, "FAIL", 0, None, "drive-resumable-local", str(exc)[:1000], artifact_path=str(path), source_url_redacted=redact_url(url) if url else None)
+
+
 def run_small_asset(asset: dict, out_dir: Path) -> AssetResult:
     last: AssetResult | None = None
     for method in fallback_methods(asset):
@@ -398,16 +438,7 @@ def run_small_asset(asset: dict, out_dir: Path) -> AssetResult:
         elif method == "browser":
             current = download_browser(asset, out_dir)
         else:
-            current = AssetResult(
-                asset_id=str(asset.get("asset_id") or ""),
-                filename=str(asset.get("filename") or "download.bin"),
-                status="FAIL",
-                bytes=0,
-                sha256=None,
-                method=method,
-                error="fallback method is delegated to control plane",
-                source_url_redacted=redact_url(str(asset.get("source_url") or "")) if asset.get("source_url") else None,
-            )
+            current = AssetResult(asset_id=str(asset.get("asset_id") or ""), filename=str(asset.get("filename") or "download.bin"), status="FAIL", bytes=0, sha256=None, method=method, error="fallback method is delegated to control plane", source_url_redacted=redact_url(str(asset.get("source_url") or "")) if asset.get("source_url") else None)
         last = current
         if not should_fallback(current):
             return current
@@ -429,24 +460,17 @@ def run_job(job: dict, out_dir: Path) -> dict:
             result = upload_direct_resumable(raw, str(session))
             if result.status != "PASS" and result.error == "source size unavailable":
                 staged = run_small_asset(raw, out_dir)
-                if staged.status == "PASS" and staged.bytes > 0 and staged.sha256:
-                    retry_asset = dict(raw)
-                    retry_asset["expected_size_bytes"] = staged.bytes
-                    retry_asset["expected_sha256"] = staged.sha256
-                    result = upload_direct_resumable(retry_asset, str(session))
+                if staged.status == "PASS" and staged.bytes > 0 and staged.sha256 and staged.artifact_path:
+                    result = upload_staged_resumable(staged, raw, str(session))
+                elif staged.status == "PASS":
+                    result = AssetResult(asset_id=str(raw.get("asset_id") or staged.asset_id or ""), filename=str(raw.get("filename") or staged.filename or "download.bin"), status="FAIL", bytes=0, sha256=None, method="drive-resumable-local", error="staged artifact metadata incomplete", artifact_path=staged.artifact_path, source_url_redacted=redact_url(str(raw.get("source_url") or "")) if raw.get("source_url") else None)
                 else:
                     result = staged
         else:
             result = run_small_asset(raw, out_dir)
         results.append(result)
     drive_refs = [r.drive_ref for r in results if r.drive_ref and r.status == "PASS"]
-    return {
-        "download_id": job.get("download_id"),
-        "assets": [asdict(r) for r in results],
-        "drive_refs": drive_refs,
-        "pass_count": sum(r.status == "PASS" for r in results),
-        "fail_count": sum(r.status != "PASS" for r in results),
-    }
+    return {"download_id": job.get("download_id"), "assets": [asdict(r) for r in results], "drive_refs": drive_refs, "pass_count": sum(r.status == "PASS" for r in results), "fail_count": sum(r.status != "PASS" for r in results)}
 
 
 def main() -> int:
@@ -460,11 +484,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     result = run_job(job, out_dir)
     Path(args.result).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({
-        "download_id": result["download_id"],
-        "pass_count": result["pass_count"],
-        "fail_count": result["fail_count"],
-    }))
+    print(json.dumps({"download_id": result["download_id"], "pass_count": result["pass_count"], "fail_count": result["fail_count"]}))
     return 0 if result["fail_count"] == 0 else 2
 
 
