@@ -427,6 +427,15 @@ def run_job(job: dict, out_dir: Path) -> dict:
         session = sessions.get(str(raw.get("asset_id"))) if isinstance(sessions, dict) else None
         if session:
             result = upload_direct_resumable(raw, str(session))
+            if result.status != "PASS" and result.error == "source size unavailable":
+                staged = run_small_asset(raw, out_dir)
+                if staged.status == "PASS" and staged.bytes > 0 and staged.sha256:
+                    retry_asset = dict(raw)
+                    retry_asset["expected_size_bytes"] = staged.bytes
+                    retry_asset["expected_sha256"] = staged.sha256
+                    result = upload_direct_resumable(retry_asset, str(session))
+                else:
+                    result = staged
         else:
             result = run_small_asset(raw, out_dir)
         results.append(result)
