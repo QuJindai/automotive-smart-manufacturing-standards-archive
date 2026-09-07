@@ -1,10 +1,11 @@
 name: Download Executor CI
 
-# Revalidated for generic Download Executor 0.3 streaming regressions on 2026-09-04.
+# Generic transfer integrity and real browser fallback regression gates.
 on:
   push:
     paths:
       - 'scripts/download_executor.py'
+      - 'scripts/download_browser.mjs'
       - 'tests/download_executor/**'
       - 'tests/memory_export/**'
       - 'tests/download_mcp/**'
@@ -18,6 +19,7 @@ on:
   pull_request:
     paths:
       - 'scripts/download_executor.py'
+      - 'scripts/download_browser.mjs'
       - 'tests/download_executor/**'
       - 'tests/memory_export/**'
       - 'tests/download_mcp/**'
@@ -48,4 +50,22 @@ jobs:
         run: node --test tests/memory_export/memory_export_core.test.mjs
       - name: Run Supabase download control contracts
         run: node --test tests/download_mcp/*.test.mjs tests/download_drive/*.test.mjs
+
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install real browser test runtime
+        run: |
+          npm init -y >/dev/null
+          npm install playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Exercise HTTPS source failure and real Chromium fallback
+        env:
+          DOWNLOAD_BROWSER_INTEGRATION: '1'
+        run: python -m unittest tests.download_executor.test_browser_integration -v
 

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from scripts.download_executor import (
     DEFAULT_CHUNK, DRIVE_ALIGNMENT, download_native, run_job,
-    upload_staged_resumable,
+    upload_staged_resumable, _put_drive_chunk,
 )
 from tests.download_executor.test_streaming_sources import DownloadFixture
 
@@ -49,7 +49,7 @@ class TransferCompatibilityTests(unittest.TestCase):
         body = b"GGUF" + bytes(range(256)) * 4096
         with DownloadFixture(body, range_supported=True) as fixture, TemporaryDirectory() as folder:
             fixture.uploaded.extend(body[:DRIVE_ALIGNMENT])
-            result = run_job(make_job(fixture, kind="gguf"), Path(folder))
+            result = run_job(make_job(fixture, kind="gguf", expected_sha256=hashlib.sha256(body).hexdigest()), Path(folder))
             self.assertEqual(result["fail_count"], 0, result)
             self.assertEqual(bytes(fixture.uploaded), body)
             self.assertEqual(fixture.put_starts[0], DRIVE_ALIGNMENT)
@@ -71,7 +71,15 @@ class TransferCompatibilityTests(unittest.TestCase):
         with DownloadFixture(body) as fixture, TemporaryDirectory() as folder:
             asset = make_job(fixture)["assets"][0]
             staged = download_native(asset, Path(folder))
-            fixture.uploaded.extend(body[:DRIVE_ALIGNMENT])
+            def interrupted_upload(session, chunk, start, total):
+                if start >= DRIVE_ALIGNMENT:
+                    raise OSError('simulated connection loss')
+                return _put_drive_chunk(session, chunk, start, total)
+            with patch('scripts.download_executor._put_drive_chunk', side_effect=interrupted_upload):
+                interrupted = upload_staged_resumable(staged, asset, fixture.url('/upload'), DRIVE_ALIGNMENT)
+            self.assertEqual(interrupted.status, 'FAIL')
+            self.assertEqual(len(fixture.uploaded), DRIVE_ALIGNMENT)
+            fixture.put_starts.clear()
             result = upload_staged_resumable(staged, asset, fixture.url("/upload"), DRIVE_ALIGNMENT)
             self.assertEqual(result.status, "PASS", result)
             self.assertEqual(fixture.uploaded, body)

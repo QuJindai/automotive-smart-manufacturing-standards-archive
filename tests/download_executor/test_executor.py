@@ -22,6 +22,7 @@ class FakeResponse:
     def __init__(self, data: bytes, status: int = 200):
         self._stream = io.BytesIO(data)
         self.status = status
+        self.headers = {}
 
     def __enter__(self):
         return self
@@ -53,7 +54,7 @@ class DownloadExecutorContracts(unittest.TestCase):
             "kind": "gguf",
             "expected_size_bytes": 8,
         }
-        with patch("scripts.download_executor.query_drive_offset", return_value=0), \
+        with patch("scripts.download_executor.query_drive_status", return_value=(0, None)), \
              patch("scripts.download_executor._request", return_value=FakeResponse(b"NOTGGUF!")), \
              patch("scripts.download_executor._put_drive_chunk", return_value=(8, {"id": "f", "name": "model.gguf"})):
             result = upload_direct_resumable(asset, "https://upload.example/session", chunk_size=8)

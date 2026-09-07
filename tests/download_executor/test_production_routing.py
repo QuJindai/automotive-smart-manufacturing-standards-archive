@@ -18,7 +18,6 @@ class DownloadProductionRoutingContracts(unittest.TestCase):
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("/functions/v1/download-drive'", text)
         self.assertIn("/functions/v1/download-drive/executor/verify/$DOWNLOAD_ID", text)
-        self.assertIn("data['drive_verified']=True", text)
         self.assertNotIn("/functions/v1/download-drive-staging", text)
 
     def test_staging_acceptance_remains_explicitly_staging(self):

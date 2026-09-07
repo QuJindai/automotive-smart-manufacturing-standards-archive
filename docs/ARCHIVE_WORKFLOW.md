@@ -18,16 +18,22 @@ Release downloads in gates of 1, 10, 50 and 200 items. Do not advance a gate unl
 
 ## Generic source transfer
 
-Download Executor 0.3 chooses a transfer path from HTTP capabilities and verified metadata, never from a provider name:
+Download Executor 0.4 chooses a transfer path from HTTP capabilities and verified metadata, never from a provider name:
 
-- sources with a known positive size keep the direct Drive resumable path, including deterministic Range-based resume;
+- sources with a known positive size keep the direct Drive resumable path; partial Range resume requires an independently supplied expected SHA-256 so an old prefix cannot be joined to a changed source;
 - sources whose size cannot be established by `HEAD`, `Content-Length` or `Content-Range` return the machine-readable code `SOURCE_SIZE_UNKNOWN` and use the existing native/browser fallback chain;
-- a successful fallback download becomes one local, size- and SHA-256-verified snapshot; Drive upload reads that same file and never fetches the source URL again; and
+- a successful fallback download becomes one local, size- and SHA-256-verified snapshot; Drive upload reads that same file and never fetches the source URL again. Partial staged resume requires a matching persisted session/snapshot checkpoint; and
 - static PDFs, GitHub release assets, object storage, CDNs, chunked responses and dynamic APIs therefore share the same executor without host-specific branches.
 
 Unknown-length staging consumes temporary runner disk space. The one-day GitHub artifact remains recovery evidence only; Google Drive remains the authoritative archive after readback verification.
 
-## Adding a public asset
+Native source access failures, including an HTML landing/challenge page instead of an expected PDF/ZIP/GGUF, may use the configured browser fallback before upload has accepted any bytes. Length, binary magic and expected-hash integrity failures never fall back or finalize a truncated file. A resume whose content identity cannot be proven fails explicitly and must retry with a new upload session.
+
+The Drive gateway independently reads Google's `sha256Checksum`, file ID, name, size, parent and trashed state. Completion requires the server-computed checksum to equal the executor's SHA-256. Successful receipts retain `drive_sha256`, `checksum_verified=true` and `checksum_method=google_drive_sha256`. Missing or mismatched cloud checksums fail closed and are submitted as terminal, retryable failures. This is independent provider checksum verification, not a full byte re-download through the Edge Function. Completed resumable sessions must retain their file ID and cloud checksum.
+
+## Adding a public asset to the legacy manifest pipeline
+
+These steps describe the manifest/artifact connector pipeline, not the ChatGPT plugin's direct resumable path above.
 
 1. Confirm that the source is official/public and redistribution is permitted.
 2. Add one entry to `manifest/standards.json`.
@@ -65,7 +71,7 @@ Do not add direct full-text download entries for copyright-restricted ISO, IEC, 
 - No standards binaries in Git commits.
 - No redundant complete-bundle artifact.
 
-## Drive transfer ceiling
+## Legacy connector transfer ceiling
 
-The current connector path used by this project rejects a single transfer object above 100 MiB. This repository therefore uses a 95 MiB payload guard and deterministic multi-part transfer for larger assets.
+The legacy connector path rejects a single transfer object above 100 MiB and uses a 95 MiB payload guard with deterministic multi-part transfer. The ChatGPT plugin bypasses that connector using authenticated Drive resumable uploads; its limit is runner/runtime/storage capacity, not the legacy 95 MiB guard. Unknown-length sources and browser snapshots additionally need local disk/memory capacity. Capacity gates of 50, 200 and full-catalog downloads remain separate from functional bug-fix acceptance.
 

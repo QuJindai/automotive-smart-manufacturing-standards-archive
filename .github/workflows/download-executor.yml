@@ -278,23 +278,29 @@ jobs:
           data=json.load(open('result.json'))
           open('drive-verify-request.json','w').write(json.dumps({'drive_refs':data.get('drive_refs') or []},separators=(',',':')))
           PY
-          curl -fsS -X POST \
-            -H "Authorization: Bearer $OIDC_TOKEN" \
-            -H 'Content-Type: application/json' \
-            --data-binary @drive-verify-request.json \
-            "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive/executor/verify/$DOWNLOAD_ID" \
-            > drive-verify-result.json
+          # Refresh the OIDC identity after downloading large files.
+          code=OIDC_UNAVAILABLE
+          if token=$(curl -fsS --retry 2 --connect-timeout 15 --max-time 45 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=download-mcp" | python -c 'import json,sys; print(json.load(sys.stdin)["value"])'); then
+            echo "::add-mask::$token"
+            code=$(curl -sS --retry 2 --connect-timeout 15 --max-time 90 -o drive-verify-result.json -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $token" \
+              -H 'Content-Type: application/json' \
+              --data-binary @drive-verify-request.json \
+              "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-drive/executor/verify/$DOWNLOAD_ID") || true
+          fi
+          echo "DIRECT_DRIVE_VERIFY_HTTP=$code"
           python - <<'PY'
           import json
+          from scripts.download_executor import apply_drive_verification
           data=json.load(open('result.json'))
-          verified=json.load(open('drive-verify-result.json'))
-          assert verified.get('verified') is True, verified
-          refs=verified.get('drive_refs') or []
-          assert refs, verified
-          data['drive_refs']=refs
-          data['drive_verified']=True
+          try:
+              verified=json.load(open('drive-verify-result.json'))
+          except (ValueError, OSError):
+              verified={}
+          data=apply_drive_verification(data,verified)
           json.dump(data,open('result.json','w'),ensure_ascii=False,indent=2)
-          print('DIRECT_DRIVE_VERIFY=PASS',len(refs))
+          print('DIRECT_DRIVE_VERIFY=' + ('PASS' if data['drive_verified'] else 'FAIL'),len(data['drive_refs']))
           PY
           rm -f drive-verify-request.json drive-verify-result.json
 
@@ -317,14 +323,17 @@ jobs:
             'artifact_url': os.environ.get('ARTIFACT_URL',''),
             'run_id': os.environ.get('GITHUB_RUN_ID',''),
           }
-          data['executor_exit_code']=int(os.environ.get('EXECUTOR_EXIT','0'))
+          data['executor_exit_code']=max(int(data.get('executor_exit_code',0)),int(os.environ.get('EXECUTOR_EXIT','0')))
           open('result-submit.json','w').write(json.dumps(data,separators=(',',':')))
           print('download-mcp-large-result' if data.get('auth_required') is True else 'download-mcp')
           PY
           )
           echo "CONTROL_RESULT_ENDPOINT=$endpoint"
-          curl -fsS -X POST \
-            -H "Authorization: Bearer $OIDC_TOKEN" \
+          token=$(curl -fsS --retry 2 --connect-timeout 15 --max-time 45 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=download-mcp" | python -c 'import json,sys; print(json.load(sys.stdin)["value"])')
+          echo "::add-mask::$token"
+          curl -fsS --retry 2 --connect-timeout 15 --max-time 90 -X POST \
+            -H "Authorization: Bearer $token" \
             -H 'Content-Type: application/json' \
             --data-binary @result-submit.json \
             "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/$endpoint/executor/result/$DOWNLOAD_ID" \

@@ -14,16 +14,19 @@ STATIC_BODY = b"static-payload-for-direct-drive"
 
 
 class DownloadFixture:
-    def __init__(self, body=STATIC_BODY, range_supported=False, unknown_length=False):
+    def __init__(self, body=STATIC_BODY, range_supported=False, unknown_length=False, content_type=None):
         self.body = body
         self.range_supported = range_supported
         self.unknown_length = unknown_length
+        self.content_type = content_type
         self.ranges = []
         self.put_starts = []
         self.dynamic_probe_bodies: list[bytes] = []
         self.dynamic_full_bodies: list[bytes] = []
         self.static_gets = 0
         self.uploaded = bytearray()
+        self.complete = False
+        self.omit_receipt_id = False
         fixture = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -78,6 +81,8 @@ class DownloadFixture:
                         self.close_connection = True
                     else:
                         self.send_header("Content-Length", str(len(body)))
+                    if fixture.content_type:
+                        self.send_header("Content-Type", fixture.content_type)
                     self.end_headers()
                     try:
                         self.wfile.write(body)
@@ -112,6 +117,9 @@ class DownloadFixture:
             def do_PUT(self):
                 content_range = self.headers.get("Content-Range", "")
                 if content_range.startswith("bytes */"):
+                    if fixture.complete:
+                        self._completed_receipt()
+                        return
                     headers = {}
                     if fixture.uploaded:
                         headers["Range"] = f"bytes=0-{len(fixture.uploaded) - 1}"
@@ -131,11 +139,17 @@ class DownloadFixture:
                     self._finish_empty(308, Range=f"bytes=0-{len(fixture.uploaded) - 1}")
                     return
 
+                fixture.complete = True
+                self._completed_receipt()
+
+            def _completed_receipt(self):
+
                 response = json.dumps(
                     {
-                        "id": "drive-fixture",
+                        "id": "" if fixture.omit_receipt_id else "drive-fixture",
                         "name": "download.bin",
                         "size": str(len(fixture.uploaded)),
+                        "sha256Checksum": hashlib.sha256(fixture.uploaded).hexdigest(),
                         "webViewLink": "https://drive.example/drive-fixture",
                     },
                     separators=(",", ":"),
