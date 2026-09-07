@@ -25,7 +25,9 @@ from typing import BinaryIO, Iterable, Iterator
 
 DRIVE_ALIGNMENT = 256 * 1024
 DEFAULT_CHUNK = 8 * 1024 * 1024
-USER_AGENT = "DownloadExecutor/0.2 (+GitHubActions)"
+EXECUTOR_VERSION = "0.3.0"
+USER_AGENT = f"DownloadExecutor/{EXECUTOR_VERSION} (+GitHubActions)"
+SOURCE_SIZE_UNKNOWN = "SOURCE_SIZE_UNKNOWN"
 
 
 @dataclass
@@ -40,6 +42,7 @@ class AssetResult:
     drive_ref: dict | None = None
     artifact_path: str | None = None
     source_url_redacted: str | None = None
+    error_code: str | None = None
 
 
 def validate_descriptor(value: dict) -> str:
@@ -326,7 +329,17 @@ def upload_direct_resumable(asset: dict, session_url: str, chunk_size: int = DEF
     url = str(asset.get("source_url") or "")
     total = int(asset.get("expected_size_bytes") or 0) or source_size(url)
     if not total:
-        return AssetResult(asset_id, filename, "FAIL", 0, None, "drive-resumable", "source size unavailable", source_url_redacted=redact_url(url))
+        return AssetResult(
+            asset_id,
+            filename,
+            "FAIL",
+            0,
+            None,
+            "drive-resumable",
+            "source size unavailable",
+            source_url_redacted=redact_url(url),
+            error_code=SOURCE_SIZE_UNKNOWN,
+        )
     if chunk_size % DRIVE_ALIGNMENT:
         chunk_size = max(DRIVE_ALIGNMENT, (chunk_size // DRIVE_ALIGNMENT) * DRIVE_ALIGNMENT)
     try:
@@ -458,7 +471,7 @@ def run_job(job: dict, out_dir: Path) -> dict:
         session = sessions.get(str(raw.get("asset_id"))) if isinstance(sessions, dict) else None
         if session:
             result = upload_direct_resumable(raw, str(session))
-            if result.status != "PASS" and result.error == "source size unavailable":
+            if result.status != "PASS" and result.error_code == SOURCE_SIZE_UNKNOWN:
                 staged = run_small_asset(raw, out_dir)
                 if staged.status == "PASS" and staged.bytes > 0 and staged.sha256 and staged.artifact_path:
                     result = upload_staged_resumable(staged, raw, str(session))

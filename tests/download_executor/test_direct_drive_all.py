@@ -59,7 +59,8 @@ class DirectDriveAllAssetsContracts(unittest.TestCase):
             bytes=0,
             sha256=None,
             method="drive-resumable",
-            error="source size unavailable",
+            error="source length could not be determined",
+            error_code="SOURCE_SIZE_UNKNOWN",
         )
         staged = AssetResult(
             asset_id="asset-1",

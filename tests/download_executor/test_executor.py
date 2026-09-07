@@ -60,6 +60,18 @@ class DownloadExecutorContracts(unittest.TestCase):
         self.assertEqual(result.status, "FAIL")
         self.assertIn("magic mismatch", result.error or "")
 
+    def test_unknown_source_size_has_a_machine_readable_error_code(self):
+        asset = {
+            "asset_id": "a",
+            "filename": "stream.bin",
+            "source_url": "https://example.com/stream.bin",
+            "kind": "binary",
+        }
+        with patch("scripts.download_executor.source_size", return_value=None):
+            result = upload_direct_resumable(asset, "https://upload.example/session")
+
+        self.assertEqual(getattr(result, "error_code", None), "SOURCE_SIZE_UNKNOWN")
+
     def test_chunk_ranges_are_contiguous_and_aligned(self):
         ranges = list(chunk_ranges(10 * 1024 * 1024 + 17, 4 * 1024 * 1024))
         self.assertEqual(ranges[0], (0, 4 * 1024 * 1024 - 1))
