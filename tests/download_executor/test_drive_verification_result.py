@@ -1,5 +1,6 @@
 import unittest
 import json
+import os
 import re
 import subprocess
 import shutil
@@ -11,6 +12,22 @@ from scripts.download_executor import apply_drive_verification
 
 
 class DriveVerificationResultTests(unittest.TestCase):
+    def verification_step(self):
+        root = Path(__file__).resolve().parents[2]
+        workflow = (root / '.github/workflows/download-executor.yml').read_text(encoding='utf-8')
+        step = workflow.split('      - name: Verify direct Drive uploads\n', 1)[1].split('      - name:', 1)[0]
+        return root, textwrap.dedent(step.split('        run: |\n', 1)[1])
+
+    def run_verification_shell(self, folder, fake_curl):
+        root, step = self.verification_step()
+        git_bash = Path('C:/Program Files/Git/bin/bash.exe')
+        bash = str(git_bash) if git_bash.exists() else shutil.which('bash')
+        self.assertTrue(bash, 'bash required for production workflow contract')
+        env = {**os.environ, 'PYTHONPATH': str(root), 'ACTIONS_ID_TOKEN_REQUEST_TOKEN': 'fixture',
+               'ACTIONS_ID_TOKEN_REQUEST_URL': 'https://invalid.example', 'DOWNLOAD_ID': 'download-fixture'}
+        return subprocess.run([bash, '-c', fake_curl + '\n' + step], cwd=folder, env=env,
+                              capture_output=True, text=True, timeout=30)
+
     def result(self):
         ref = {'file_id': 'drive-1', 'name': 'a.pdf', 'size': 12, 'sha256': 'a' * 64}
         return {'assets': [{'asset_id': 'a', 'status': 'PASS', 'bytes': 12, 'sha256': 'a' * 64, 'drive_ref': ref}],
@@ -68,17 +85,50 @@ class DriveVerificationResultTests(unittest.TestCase):
                 self.assertEqual(saved['fail_count'], 0 if success else 1)
 
     def test_verification_oidc_failure_still_reaches_normalization(self):
-        root = Path(__file__).resolve().parents[2]
-        workflow = (root / '.github/workflows/download-executor.yml').read_text(encoding='utf-8')
-        refresh = workflow.split('          # Refresh the OIDC identity after downloading large files.\n', 1)[1].split("          python - <<'PY'", 1)[0]
-        git_bash = Path('C:/Program Files/Git/bin/bash.exe')
-        bash = str(git_bash) if git_bash.exists() else shutil.which('bash')
-        self.assertTrue(bash, 'bash required for production workflow contract')
-        program = ('set -euo pipefail\n'
-                   'curl() { return 22; }\n'
-                   'export ACTIONS_ID_TOKEN_REQUEST_TOKEN=fixture ACTIONS_ID_TOKEN_REQUEST_URL=https://invalid.example DOWNLOAD_ID=download-fixture\n'
-                   + textwrap.dedent(refresh) + '\necho NORMALIZER_REACHED\n')
         with TemporaryDirectory() as folder:
-            result = subprocess.run([bash, '-c', program], cwd=folder, capture_output=True, text=True, timeout=20)
+            (Path(folder) / 'result.json').write_text(json.dumps(self.result()), encoding='utf-8')
+            result = self.run_verification_shell(folder, 'curl() { return 22; }')
+            saved = json.loads((Path(folder) / 'result.json').read_text(encoding='utf-8'))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('NORMALIZER_REACHED', result.stdout)
+        self.assertFalse(saved['drive_verified'])
+        self.assertEqual(saved['fail_count'], 1)
+
+    def test_large_verification_uses_bounded_requests_and_combines_receipts(self):
+        data = {'assets': [], 'drive_refs': []}
+        for index in range(41):
+            ref = {**self.result()['drive_refs'][0], 'file_id': f'id-{index}'}
+            data['drive_refs'].append(ref)
+            data['assets'].append({**self.result()['assets'][0], 'asset_id': str(index), 'drive_ref': ref})
+        fake = '''curl() {
+          if [[ "$*" == *audience=download-mcp* ]]; then
+            printf '{"value":"fixture"}'
+            return
+          fi
+          local output='' input=''
+          while [ "$#" -gt 0 ]; do
+            case "$1" in
+              -o) output="$2"; shift 2;;
+              --data-binary) input="${2#@}"; shift 2;;
+              *) shift;;
+            esac
+          done
+          python - "$input" "$output" <<'FIXTURE'
+import json, sys
+refs = json.load(open(sys.argv[1]))['drive_refs']
+open('batch-sizes.txt', 'a').write(str(len(refs)) + '\\n')
+json.dump({'verified': True, 'drive_refs': [{**r, 'checksum_verified': True} for r in refs]}, open(sys.argv[2], 'w'))
+FIXTURE
+          printf '200'
+        }'''
+        for fail_middle in (False, True):
+            fake_response = fake.replace("'verified': True", "'verified': not sys.argv[2].endswith('-20.json')") if fail_middle else fake
+            with self.subTest(fail_middle=fail_middle), TemporaryDirectory() as folder:
+                (Path(folder) / 'result.json').write_text(json.dumps(data), encoding='utf-8')
+                result = self.run_verification_shell(folder, fake_response)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                batches = list(map(int, (Path(folder) / 'batch-sizes.txt').read_text().splitlines()))
+                saved = json.loads((Path(folder) / 'result.json').read_text())
+            self.assertEqual(batches, [20, 20, 1])
+            self.assertEqual(saved['drive_verified'], not fail_middle)
+            self.assertEqual(len(saved['drive_refs']), 21 if fail_middle else 41)
+            self.assertEqual(saved['fail_count'], 20 if fail_middle else 0)

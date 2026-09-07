@@ -31,6 +31,8 @@ Native source access failures, including an HTML landing/challenge page instead 
 
 The Drive gateway independently reads Google's `sha256Checksum`, file ID, name, size, parent and trashed state. Completion requires the server-computed checksum to equal the executor's SHA-256. Successful receipts retain `drive_sha256`, `checksum_verified=true` and `checksum_method=google_drive_sha256`. Missing or mismatched cloud checksums fail closed and are submitted as terminal, retryable failures. This is independent provider checksum verification, not a full byte re-download through the Edge Function. Completed resumable sessions must retain their file ID and cloud checksum.
 
+The executor verifies at most 20 Drive receipts per Edge request and refreshes OIDC for every verification batch. A failed batch cannot mark its files verified; successful batches retain their individual cloud evidence. This bounds verification requests without restricting the source provider, file type or per-file byte size.
+
 ## Adding a public asset to the legacy manifest pipeline
 
 These steps describe the manifest/artifact connector pipeline, not the ChatGPT plugin's direct resumable path above.
