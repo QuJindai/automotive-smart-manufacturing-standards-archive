@@ -1,5 +1,7 @@
 # Download Plugin Autonomous Closure Implementation Plan
 
+Status reconciliation (2026-09-07): core implementation and deployment have been verified. Current repair completion and explicit UI/capacity boundaries are recorded in [the release note](../../releases/2026-09-07-download-executor-v0.4.0.md). Original procedural checkboxes below are historical, not the current completion ledger.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the `下载` ChatGPT plugin resolve public sources through web Chat, claim GitHub execution without a manual descriptor commit, write into a safe requested Drive subfolder, and complete automatically only after byte/hash/Drive verification.

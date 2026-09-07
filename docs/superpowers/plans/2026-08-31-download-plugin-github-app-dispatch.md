@@ -1,5 +1,7 @@
 # Download Plugin GitHub App Dispatch Implementation Plan
 
+Status reconciliation (2026-09-07): GitHub App dispatch and durable execution are deployed and demonstrated by fresh production jobs. See [the release note](../../releases/2026-09-07-download-executor-v0.4.0.md) for current evidence and remaining UI/capacity boundaries. Original procedural checkboxes below are historical, not the current completion ledger.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Trigger the existing GitHub download executor immediately when a durable job enters `QUEUED`, using a repository-scoped private GitHub App instead of a personal token.
