@@ -27,6 +27,14 @@ python reference-implementation/p-aas-v2/run_external.py \
 
 The BaSyx adapter reads `/v3/api-docs`, attempts `/upload`, and transparently falls back to AAS/Submodel/ConceptDescription repository POSTs when required.
 
+Add `--supplementary-aasx` to import the three synthetic attachments and require
+`AAS-T019` as well. BaSyx may rename package parts during serialization. The
+round-trip check therefore matches each File by submodel ID and idShort path,
+verifies its exported OPC supplementary relationship, and compares the attachment
+bytes and SHA-256. The evidence records both original and exported names. Missing
+links, swapped File targets and changed content remain failures; filename changes
+alone do not imply data loss. JSON and XML environment parts are supported.
+
 ## Fraunhofer IOSB FA³ST target
 
 The public acceptance workflow starts the pinned image `fraunhoferiosb/faaast-service:1.3.0` with local-test SSL disabled, exercises the `/api/v3.0` repository API, imports the same fixture through `/api/v3.0/import`, reads the imported AAS/Submodels/ConceptDescriptions, and verifies AASX serialization.

@@ -5,6 +5,7 @@ import json
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from .supplementary import validate_supplementary_roundtrip
 from typing import Any
 
 from paas_ref.aasx import validate_aasx
@@ -122,7 +123,7 @@ def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: 
                     results.append(AssessmentResult("AAS-T019","NOT_APPLICABLE","SUPPORTED_VERIFIED","fixture_has_no_supplementary_files; AASX package serialization verified but supplementary linkage not exercised",[{"assertion_id":"supplementary-fixture","status":"NOT_APPLICABLE","expected":"supplementary files only when fixture contains File references","observed":[],"message":"fixture_has_no_supplementary_files"}],[artifact] if artifact else []))
                 else:
                     supp_checks=validate_aasx(aasx_path,required_supp)
-                    supp=next((c for c in supp_checks if c.check_id=="aasx-supplementary"),None)
+                    supp=validate_supplementary_roundtrip(fixture,import_package,aasx_path) if import_package is not None else next((c for c in supp_checks if c.check_id=="aasx-supplementary"),None)
                     results.append(AssessmentResult("AAS-T019","PASS" if supp and supp.passed else "FAIL","SUPPORTED_VERIFIED",supp.message if supp else "supplementary validation missing",_assertion(supp) if supp else [],[artifact] if artifact else []))
             else:
                 results.append(AssessmentResult("AAS-T018","FAIL",aasx_cap.status.value,f"/serialization did not yield a valid AASX package (HTTP {serialized.status})",assertions,[artifact] if artifact else []))
@@ -132,5 +133,5 @@ def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: 
 
     by_id={r.test_id:r for r in results}; ordered=[by_id[f"AAS-T{i:03d}"] for i in range(1,20)]
     write_outputs(out_dir,adapter.target_metadata,capabilities,ordered)
-    required={f"AAS-T{i:03d}" for i in list(range(1,10))+[11,12,18]}; required_failures=sum(1 for r in ordered if r.test_id in required and r.result in {"FAIL","BLOCKED"})
+    required={f"AAS-T{i:03d}" for i in list(range(1,10))+[11,12,18]}; required.update({"AAS-T019"} if import_package is not None and _supplementary_refs(fixture) else set()); required_failures=sum(1 for r in ordered if r.test_id in required and r.result in {"FAIL","BLOCKED"})
     return {"required_failures":required_failures,"results":[r.to_dict() for r in ordered],"capabilities":[c.to_dict() for c in capabilities]}
