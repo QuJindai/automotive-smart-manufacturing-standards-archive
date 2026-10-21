@@ -1,0 +1,114 @@
+name: Validate P-AAS V2 FA3ST interoperability
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-aas-v2/**'
+      - 'reference-implementation/p-aas-v1/**'
+      - '.github/workflows/validate-p-aas-faaast.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-aas-v2/**'
+      - 'reference-implementation/p-aas-v1/**'
+      - '.github/workflows/validate-p-aas-faaast.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  faaast-1-3-0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: V2 external adapter tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd reference-implementation/p-aas-v2
+          PYTHONPATH=.:tests:../p-aas-v1 python -m unittest discover -s tests -v
+
+      - name: Start pinned FA3ST Service 1.3.0
+        working-directory: reference-implementation/p-aas-v2/faaast
+        run: docker compose up -d
+
+      - name: Wait for FA3ST AAS Repository API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import time, urllib.request
+          url='http://127.0.0.1:8082/api/v3.0/shells?limit=1'
+          last=None
+          for _ in range(90):
+              try:
+                  with urllib.request.urlopen(url, timeout=3) as response:
+                      if response.status == 200:
+                          print('FAAAST_API_READY=PASS')
+                          raise SystemExit(0)
+              except Exception as exc:
+                  last=exc
+              time.sleep(2)
+          print('FAAAST_API_READY=FAIL', repr(last))
+          raise SystemExit(1)
+          PY
+
+      - name: Run P-AAS V2 against real FA3ST 1.3.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/p-aas-v2-faaast
+          python reference-implementation/p-aas-v2/run_external.py \
+            --adapter faaast \
+            --base-url http://127.0.0.1:8082 \
+            --fixture reference-implementation/p-aas-v2/basyx/fixture/environment.json \
+            --target-version 1.3.0 \
+            --out /tmp/p-aas-v2-faaast | tee /tmp/p-aas-v2-faaast.log
+          grep -q 'P_AAS_V2_REQUIRED_FAILURES=0' /tmp/p-aas-v2-faaast.log
+          python - <<'PY'
+          import json, pathlib
+          out=pathlib.Path('/tmp/p-aas-v2-faaast')
+          summary=json.loads((out/'interop-summary.json').read_text(encoding='utf-8'))
+          matrix=json.loads((out/'implementation-capability-matrix.json').read_text(encoding='utf-8'))
+          bundle=json.loads((out/'evidence-bundle.json').read_text(encoding='utf-8'))
+          assert summary['certification_claim'] is False
+          assert summary['target']['implementation'] == 'Fraunhofer IOSB FA3ST Service'
+          assert summary['target']['version'] == '1.3.0'
+          assert summary['counts']['FAIL'] == 0
+          assert summary['counts']['BLOCKED'] == 0
+          assert len(bundle['test_results']) == 19
+          assert [r['test_id'] for r in bundle['test_results']] == [f'AAS-T{i:03d}' for i in range(1,20)]
+          required={f'AAS-T{i:03d}' for i in list(range(1,10))+[11,12,18]}
+          assert all(r['result']=='PASS' for r in bundle['test_results'] if r['test_id'] in required)
+          auth=next(c for c in matrix if c['capability_id']=='authorization')
+          assert auth['status']=='UNSUPPORTED_WITH_EVIDENCE'
+          assert all('BaSyx' not in (r.get('observations') or '') for r in bundle['test_results'])
+          print('P_AAS_V2_FAAAST_CORE=PASS')
+          print('P_AAS_V2_FAAAST_COUNTS='+json.dumps(summary['counts'],sort_keys=True))
+          PY
+
+      - name: Capture FA3ST logs
+        if: always()
+        working-directory: reference-implementation/p-aas-v2/faaast
+        run: docker compose logs --no-color > /tmp/faaast-container.log || true
+
+      - name: Upload one-day FA3ST evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p-aas-v2-faaast-${{ github.run_id }}
+          path: |
+            /tmp/p-aas-v2-faaast/
+            /tmp/p-aas-v2-faaast.log
+            /tmp/faaast-container.log
+          if-no-files-found: warn
+          retention-days: 1
+          compression-level: 6
+
+      - name: Stop FA3ST
+        if: always()
+        working-directory: reference-implementation/p-aas-v2/faaast
+        run: docker compose down -v --remove-orphans

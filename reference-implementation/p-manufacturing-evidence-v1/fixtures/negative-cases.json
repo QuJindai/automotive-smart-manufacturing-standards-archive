@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "base_fixture": "valid_rework_package",
+  "cases": [
+    {"case_id":"NEG-DUPLICATE-ID","intended_test":"ME-T002","mutation":"duplicate_id"},
+    {"case_id":"NEG-MISSING-PROVENANCE","intended_test":"ME-T003","mutation":"remove_source_system"},
+    {"case_id":"NEG-BROKEN-LINKAGE","intended_test":"ME-T004","mutation":"mismatch_equipment"},
+    {"case_id":"NEG-PROGRAM-VERSION","intended_test":"ME-T005","mutation":"wrong_program_version"},
+    {"case_id":"NEG-PARAMETER-HASH","intended_test":"ME-T005","mutation":"wrong_parameter_hash"},
+    {"case_id":"NEG-TIME-INVERSION","intended_test":"ME-T006","mutation":"timestamp_inversion"},
+    {"case_id":"NEG-MISSING-ARTIFACT","intended_test":"ME-T009","mutation":"missing_artifact"},
+    {"case_id":"NEG-TAMPERED-ARTIFACT","intended_test":"ME-T009","mutation":"tamper_artifact"},
+    {"case_id":"NEG-RECORD-TAMPER","intended_test":"ME-T010","mutation":"record_tamper"},
+    {"case_id":"NEG-BROKEN-PARENT","intended_test":"ME-T011","mutation":"unknown_parent"},
+    {"case_id":"NEG-BROKEN-PREVIOUS-HASH","intended_test":"ME-T012","mutation":"wrong_previous_hash"},
+    {"case_id":"NEG-ATTEMPT-GAP","intended_test":"ME-T013","mutation":"attempt_gap"},
+    {"case_id":"NEG-ILLEGAL-RETEST","intended_test":"ME-T014","mutation":"illegal_retest"},
+    {"case_id":"NEG-ILLEGAL-RELEASE","intended_test":"ME-T015","mutation":"illegal_release"}
+  ]
+}

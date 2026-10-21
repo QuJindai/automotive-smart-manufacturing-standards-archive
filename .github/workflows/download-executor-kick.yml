@@ -1,0 +1,26 @@
+name: Download Executor Operator Kick
+
+on:
+  push:
+    paths:
+      - '.github/workflows/download-executor-kick.yml'
+      - 'ops/download-executor-kick.txt'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-current-executor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Download Executor on current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          workflow_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows" --jq '.workflows[] | select(.name == "Download Executor") | .id' | head -n1)"
+          test -n "$workflow_id"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/dispatches" -f ref=main
+          echo "dispatched_workflow_id=$workflow_id"

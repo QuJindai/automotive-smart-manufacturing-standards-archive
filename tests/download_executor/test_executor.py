@@ -22,6 +22,7 @@ class FakeResponse:
     def __init__(self, data: bytes, status: int = 200):
         self._stream = io.BytesIO(data)
         self.status = status
+        self.headers = {}
 
     def __enter__(self):
         return self
@@ -53,12 +54,24 @@ class DownloadExecutorContracts(unittest.TestCase):
             "kind": "gguf",
             "expected_size_bytes": 8,
         }
-        with patch("scripts.download_executor.query_drive_offset", return_value=0), \
+        with patch("scripts.download_executor.query_drive_status", return_value=(0, None)), \
              patch("scripts.download_executor._request", return_value=FakeResponse(b"NOTGGUF!")), \
              patch("scripts.download_executor._put_drive_chunk", return_value=(8, {"id": "f", "name": "model.gguf"})):
             result = upload_direct_resumable(asset, "https://upload.example/session", chunk_size=8)
         self.assertEqual(result.status, "FAIL")
         self.assertIn("magic mismatch", result.error or "")
+
+    def test_unknown_source_size_has_a_machine_readable_error_code(self):
+        asset = {
+            "asset_id": "a",
+            "filename": "stream.bin",
+            "source_url": "https://example.com/stream.bin",
+            "kind": "binary",
+        }
+        with patch("scripts.download_executor.source_size", return_value=None):
+            result = upload_direct_resumable(asset, "https://upload.example/session")
+
+        self.assertEqual(getattr(result, "error_code", None), "SOURCE_SIZE_UNKNOWN")
 
     def test_chunk_ranges_are_contiguous_and_aligned(self):
         ranges = list(chunk_ranges(10 * 1024 * 1024 + 17, 4 * 1024 * 1024))

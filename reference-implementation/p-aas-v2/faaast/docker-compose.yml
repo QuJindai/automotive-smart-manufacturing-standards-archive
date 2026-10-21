@@ -1,0 +1,9 @@
+services:
+  faaast:
+    image: fraunhoferiosb/faaast-service:1.3.0
+    command:
+      - --empty-model
+      - endpoints[0]_sslEnabled=false
+      - endpoints[0]_port=8080
+    ports:
+      - "127.0.0.1:8082:8080"

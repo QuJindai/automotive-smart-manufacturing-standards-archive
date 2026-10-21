@@ -1,0 +1,53 @@
+from pathlib import Path
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+WORKFLOW = (ROOT / ".github/workflows/download-executor.yml").read_text(encoding="utf-8")
+STAGING_ACCEPTANCE = (
+    ROOT / ".github/workflows/download-plugin-staging-acceptance.yml"
+).read_text(encoding="utf-8")
+
+
+class QueueWorkflowContracts(unittest.TestCase):
+    def test_staging_acceptance_requires_current_server_version(self):
+        self.assertIn("0.5.0-github-app-dispatch", STAGING_ACCEPTANCE)
+        self.assertNotIn("0.4.0-autonomous-queue", STAGING_ACCEPTANCE)
+
+    def test_schedule_and_manual_recovery_are_enabled(self):
+        self.assertIn("cron: '2/5 * * * *'", WORKFLOW)
+        self.assertIn("workflow_dispatch:", WORKFLOW)
+
+    def test_non_push_run_claims_with_oidc_and_allows_empty_queue(self):
+        self.assertIn("/download-mcp/executor/claim", WORKFLOW)
+        self.assertIn("code=$(curl -sS -o claim.json -w '%{http_code}' -X POST", WORKFLOW)
+        self.assertIn("if [ \"$code\" = '204' ]; then", WORKFLOW)
+        self.assertIn("echo 'found=false' >> \"$GITHUB_OUTPUT\"", WORKFLOW)
+
+    def test_descriptor_push_recovery_is_preserved(self):
+        self.assertIn("git diff-tree --no-commit-id", WORKFLOW)
+        self.assertIn("validate_descriptor", WORKFLOW)
+
+    def test_deleted_descriptor_exits_as_an_empty_queue(self):
+        self.assertIn("--diff-filter=AM", WORKFLOW)
+        self.assertIn("if [ -z \"$path\" ]; then", WORKFLOW)
+        self.assertIn("echo 'found=false' >> \"$GITHUB_OUTPUT\"", WORKFLOW)
+        self.assertIn("DOWNLOAD_DESCRIPTOR=REMOVED", WORKFLOW)
+
+    def test_execution_steps_are_guarded_by_found_output(self):
+        self.assertGreaterEqual(
+            WORKFLOW.count("steps.descriptor.outputs.found == 'true'"),
+            8,
+        )
+
+    def test_completed_claim_kicks_the_next_queue_run_without_a_long_lived_secret(self):
+        self.assertIn("actions: write", WORKFLOW)
+        self.assertIn("name: Continue draining queued downloads", WORKFLOW)
+        self.assertIn("if: always() && steps.descriptor.outputs.found == 'true'", WORKFLOW)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", WORKFLOW)
+        self.assertIn("gh workflow run download-executor.yml --ref main", WORKFLOW)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
