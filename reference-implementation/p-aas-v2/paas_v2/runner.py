@@ -5,6 +5,7 @@ import json
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from .supplementary import validate_supplementary_roundtrip
 from typing import Any
 
 from paas_ref.aasx import validate_aasx
@@ -52,13 +53,13 @@ def _supplementary_refs(fixture: dict[str, Any]) -> set[str]:
     return refs
 
 
-def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: Path) -> dict[str, Any]:
+def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: Path, import_package: bytes | None = None) -> dict[str, Any]:
     out_dir=Path(out_dir); out_dir.mkdir(parents=True,exist_ok=True)
     health=adapter.health()
     if health.status != 200: raise RuntimeError(f"external OpenAPI health failed: {health.status}")
     (out_dir/"openapi.json").write_text(json.dumps(health.payload,ensure_ascii=False,indent=2),encoding="utf-8")
     capabilities=adapter.discover_capabilities(); cmap=_cap_map(capabilities)
-    imp=adapter.import_environment(fixture)
+    imp=adapter.import_aasx(import_package,"supplementary-input.aasx") if import_package is not None else adapter.import_environment(fixture)
     (out_dir/"import-response.json").write_text(json.dumps({"success":imp.success,"route":imp.route,"responses":imp.responses,"reason":imp.reason},ensure_ascii=False,indent=2),encoding="utf-8")
     if not imp.success: raise RuntimeError("fixture import failed: "+imp.reason)
     import_response=next((r for r in imp.responses if 200 <= int(r.get("status",0)) < 300),{})
@@ -121,7 +122,8 @@ def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: 
                 if not required_supp:
                     results.append(AssessmentResult("AAS-T019","NOT_APPLICABLE","SUPPORTED_VERIFIED","fixture_has_no_supplementary_files; AASX package serialization verified but supplementary linkage not exercised",[{"assertion_id":"supplementary-fixture","status":"NOT_APPLICABLE","expected":"supplementary files only when fixture contains File references","observed":[],"message":"fixture_has_no_supplementary_files"}],[artifact] if artifact else []))
                 else:
-                    supp=next((c for c in checks if c.check_id=="aasx-supplementary"),None)
+                    supp_checks=validate_aasx(aasx_path,required_supp)
+                    supp=validate_supplementary_roundtrip(fixture,import_package,aasx_path) if import_package is not None else next((c for c in supp_checks if c.check_id=="aasx-supplementary"),None)
                     results.append(AssessmentResult("AAS-T019","PASS" if supp and supp.passed else "FAIL","SUPPORTED_VERIFIED",supp.message if supp else "supplementary validation missing",_assertion(supp) if supp else [],[artifact] if artifact else []))
             else:
                 results.append(AssessmentResult("AAS-T018","FAIL",aasx_cap.status.value,f"/serialization did not yield a valid AASX package (HTTP {serialized.status})",assertions,[artifact] if artifact else []))
@@ -131,5 +133,5 @@ def run_external(adapter: ExternalAASAdapter, fixture: dict[str, Any], out_dir: 
 
     by_id={r.test_id:r for r in results}; ordered=[by_id[f"AAS-T{i:03d}"] for i in range(1,20)]
     write_outputs(out_dir,adapter.target_metadata,capabilities,ordered)
-    required={f"AAS-T{i:03d}" for i in list(range(1,10))+[11,12,18]}; required_failures=sum(1 for r in ordered if r.test_id in required and r.result in {"FAIL","BLOCKED"})
+    required={f"AAS-T{i:03d}" for i in list(range(1,10))+[11,12,18]}; required.update({"AAS-T019"} if import_package is not None and _supplementary_refs(fixture) else set()); required_failures=sum(1 for r in ordered if r.test_id in required and r.result in {"FAIL","BLOCKED"})
     return {"required_failures":required_failures,"results":[r.to_dict() for r in ordered],"capabilities":[c.to_dict() for c in capabilities]}

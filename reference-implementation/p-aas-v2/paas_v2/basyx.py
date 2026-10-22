@@ -103,6 +103,19 @@ class BasyxAdapter:
         body = (f"--{boundary}\r\n" f"Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n" f"Content-Type: {mime}\r\n\r\n").encode() + payload + f"\r\n--{boundary}--\r\n".encode()
         return body, boundary
 
+    def import_aasx(self, package: bytes, filename: str = "environment.aasx") -> ImportResult:
+        try:
+            paths = self._paths()
+        except TransportBlocked as exc:
+            return ImportResult(False, "none", [], str(exc))
+        if "/upload" not in paths:
+            return ImportResult(False, "none", [], "upload endpoint absent")
+        mime = "application/asset-administration-shell-package"
+        body, boundary = self._multipart(filename, package, mime)
+        ev = request("POST", self.base_url + "/upload", body, {"Content-Type": f"multipart/form-data; boundary={boundary}", "Accept": "application/json"})
+        responses = [{"route":"/upload","status":ev.status,"body":ev.body_text[:1000]}]
+        return ImportResult(200 <= ev.status < 300, "upload-aasx", responses, "" if 200 <= ev.status < 300 else f"AASX upload failed: HTTP {ev.status}")
+
     def import_environment(self, environment: dict[str, Any]) -> ImportResult:
         responses: list[dict[str, Any]] = []
         try:
