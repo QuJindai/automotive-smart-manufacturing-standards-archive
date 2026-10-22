@@ -1,0 +1,48 @@
+name: SAMR encrypted research archive relay
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/samr_encrypted_archive.py'
+      - 'official-index/samr-download-probe-batch1.json'
+      - 'crypto/samr-batch1-20260826-public.pem'
+      - '.github/workflows/samr-encrypted-research-archive.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  encrypted-download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          python -m pip install 'httpx==0.28.1' 'ddddocr==1.5.6' 'Pillow>=10,<12' 'cryptography>=43,<47'
+      - name: Download official standards and encrypt before artifact handoff
+        run: |
+          rm -rf encrypted-out samr-private-work
+          python scripts/samr_encrypted_archive.py \
+            --targets official-index/samr-download-probe-batch1.json \
+            --public-key crypto/samr-batch1-20260826-public.pem \
+            --encrypted-out encrypted-out
+          test -f encrypted-out/samr-batch1.payload.aesgcm
+          test -f encrypted-out/samr-batch1.key.rsa-oaep
+          test -f encrypted-out/envelope.json
+          test ! -d samr-private-work/plain
+      - name: Show ciphertext metadata only
+        run: cat encrypted-out/envelope.json
+      - name: Upload encrypted one-day artifact only
+        uses: actions/upload-artifact@v4
+        with:
+          name: samr-encrypted-batch1-${{ github.run_id }}
+          path: encrypted-out/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
