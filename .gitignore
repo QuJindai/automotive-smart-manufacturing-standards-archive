@@ -1,0 +1,2 @@
+# Supabase CLI local runtime/cache, never deployment source.
+supabase/.temp/

@@ -13,6 +13,8 @@ import {
   requireText,
 } from "./core.ts";
 import { dispatchAfterDurableQueue, GitHubAppDispatcher } from "./github_app.ts";
+import { handleSchedulerWake, readQueueRows } from "./scheduler.ts";
+import type { QueueCursor } from "./scheduler.ts";
 import {
   hydrateSensitiveAssets,
   redactJob,
@@ -30,8 +32,9 @@ const ISSUER = "https://token.actions.githubusercontent.com";
 const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks`));
 const SMALL_LIMIT = 100 * 1024 * 1024;
 const MCP_PROTOCOL = "2025-06-18";
-const SERVER_VERSION = "0.5.0-github-app-dispatch";
+const SERVER_VERSION = "0.5.1-queue-watchdog";
 const EXECUTOR_LEASE_MS = 20 * 60_000;
+const SCHEDULER_STATE_KIND = "download_executor_scheduler";
 const GITHUB_APP_DISPATCHER = new GitHubAppDispatcher({
   environment: {
     DOWNLOAD_GITHUB_APP_ID: Deno.env.get("DOWNLOAD_GITHUB_APP_ID"),
@@ -178,20 +181,27 @@ async function updateJob(id: string, revision: number, payload: Record<string, u
   return rows[0];
 }
 
-async function claimNextJob(stateKind: string) {
+async function readQueuePage(stateKind: string, cursor: QueueCursor | null, limit: number) {
   const query = new URLSearchParams({
     owner_id: `eq.${STATE_OWNER}`,
     kind: `eq.${stateKind}`,
     "payload->>status": "in.(QUEUED,FETCHING)",
-    select: "payload,revision,created_at",
-    order: "created_at.asc",
-    limit: "20",
+    select: "payload,revision,created_at,record_id",
+    order: "created_at.asc,record_id.asc",
+    limit: String(limit),
   });
+  if (cursor) {
+    const literal = (value: string) => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+    query.set("or", `(created_at.gt.${literal(cursor.created_at)},and(created_at.eq.${literal(cursor.created_at)},record_id.gt.${literal(cursor.record_id)}))`);
+  }
   const response = await fetch(`${BASE}/rest/v1/iaos_mcp_state?${query}`, { headers: headers() });
   if (!response.ok) throw new Error(`queue read failed ${response.status}`);
-  const rows = await response.json();
+  return await response.json();
+}
+
+async function claimNextJob(stateKind: string) {
   const now = new Date();
-  for (const row of Array.isArray(rows) ? rows : []) {
+  for await (const row of readQueueRows((cursor, limit) => readQueuePage(stateKind, cursor, limit))) {
     const job = row?.payload;
     if (!job || !isClaimEligible(job, now.getTime())) continue;
     try {
@@ -397,6 +407,28 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: originHeaders(req) });
   if (sub === "/health" && req.method === "GET") {
     return json(req, { status: "ok", service: "下载", version: SERVER_VERSION, access: "fixed-private-path" });
+  }
+
+  if (sub === "/internal/wake") {
+    return await handleSchedulerWake(req, {
+      stateKind,
+      now: () => Date.now(),
+      readTokenHash: async () => (await getJob("config", SCHEDULER_STATE_KIND)).payload.token_sha256,
+      readPage: (cursor, limit) => readQueuePage("download_job", cursor, limit),
+      store: {
+        read: () => getJob("dispatcher", SCHEDULER_STATE_KIND),
+        compareAndSwap: async (revision, payload) => {
+          try {
+            await updateJob("dispatcher", revision, payload, SCHEDULER_STATE_KIND);
+            return true;
+          } catch (error) {
+            if (error instanceof Error && error.message === "revision conflict") return false;
+            throw error;
+          }
+        },
+      },
+      dispatcher: GITHUB_APP_DISPATCHER,
+    });
   }
 
   if (sub === "/executor/claim" && req.method === "POST") {
