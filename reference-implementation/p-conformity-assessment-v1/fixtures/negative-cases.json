@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "profile_id": "P-CAE-AUTO-R14",
+  "profile_version": "1.0",
+  "cases": [
+    {"case_id":"NEG-MISSING-PROOF","base":"c2-fat-sat","mutation":"missing_proof_file","intended_test":"CAE-T003","expected_result":"FAIL"},
+    {"case_id":"NEG-PROOF-SHA","base":"c2-fat-sat","mutation":"proof_sha_mismatch","intended_test":"CAE-T003","expected_result":"FAIL"},
+    {"case_id":"NEG-INVALID-ROLE","base":"c1-lab","mutation":"invalid_assessor_role","intended_test":"CAE-T006","expected_result":"FAIL"},
+    {"case_id":"NEG-MANUAL-AUTOMATABLE","base":"c1-lab","mutation":"manual_pass_automatable","intended_test":"CAE-T005","expected_result":"FAIL"},
+    {"case_id":"NEG-ILLEGAL-NA","base":"c1-lab","mutation":"illegal_not_applicable","intended_test":"CAE-T007","expected_result":"FAIL"},
+    {"case_id":"NEG-EXCEPTION-MASK","base":"c2-fat-sat","mutation":"exception_masks_failure","intended_test":"CAE-T008","expected_result":"FAIL"},
+    {"case_id":"NEG-C1-NO-C0","base":"c1-lab","mutation":"remove_c0_predecessor","intended_test":"CAE-T010","expected_result":"FAIL"},
+    {"case_id":"NEG-C2-NO-C1","base":"c2-fat-sat","mutation":"remove_c1_predecessor","intended_test":"CAE-T011","expected_result":"FAIL"},
+    {"case_id":"NEG-C2-NO-PROJECT","base":"c2-fat-sat","mutation":"remove_project_binding","intended_test":"CAE-T011","expected_result":"FAIL"},
+    {"case_id":"NEG-C2-NO-P0-06","base":"c2-fat-sat","mutation":"remove_p0_06_proof","intended_test":"CAE-T011","expected_result":"FAIL"},
+    {"case_id":"NEG-C3-COVERAGE","base":"c3-continuous","mutation":"insufficient_c3_coverage","intended_test":"CAE-T012","expected_result":"FAIL"},
+    {"case_id":"NEG-MATERIAL-DRIFT","base":"c3-continuous","mutation":"truthful_material_drift","intended_test":"CAE-T014","expected_result":"PASS","expected_lifecycle_state":"REEVALUATION_REQUIRED"},
+    {"case_id":"NEG-UNDECLARED-DRIFT","base":"c3-continuous","mutation":"undeclared_material_drift","intended_test":"CAE-T014","expected_result":"FAIL"},
+    {"case_id":"NEG-EXPIRED","base":"c2-fat-sat","mutation":"expired_assessment","intended_test":"CAE-T016","expected_result":"FAIL","expected_lifecycle_state":"EXPIRED"},
+    {"case_id":"NEG-REVOKED-PREDECESSOR","base":"c2-fat-sat","mutation":"revoked_c1_predecessor","intended_test":"CAE-T011","expected_result":"FAIL"},
+    {"case_id":"NEG-UPSTREAM-HASH","base":"c2-fat-sat","mutation":"upstream_blob_mismatch","intended_test":"CAE-T013","expected_result":"FAIL"},
+    {"case_id":"NEG-METRIC-TAMPER","base":"c2-fat-sat","mutation":"tampered_effectiveness_metric","intended_test":"CAE-T018","expected_result":"FAIL"},
+    {"case_id":"NEG-FAKE-CERTIFICATION","base":"c1-lab","mutation":"fake_certification_claim","intended_test":"CAE-T020","expected_result":"FAIL"}
+  ]
+}

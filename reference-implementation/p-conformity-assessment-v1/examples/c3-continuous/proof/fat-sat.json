@@ -1,0 +1,1 @@
+{"assessment_object_id":"urn:example:assessment-object:001","assessment_object_type":"AUTOMOTIVE_MANUFACTURING_IMPLEMENTATION","baseline_sha256":"f54c0a41594e82764b68ca77f9d6016954f9ee2898ec0c85ae891afe725e1db7","fat":"PASS","instance_id":"urn:example:equipment:pcae-001","kind":"FAT_SAT_EVIDENCE","project_id":"urn:example:project:pcae-001","sat":"PASS","synthetic":true}

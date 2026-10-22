@@ -80,7 +80,7 @@
       "additionalProperties": false,
       "required": ["test_id", "level", "result", "executed_at", "linked_rule_ids", "assertions", "artifacts"],
       "properties": {
-        "test_id": {"type": "string", "pattern": "^(AAS|AI|ME)-T[0-9]{3}$"},
+        "test_id": {"type": "string", "pattern": "^(AAS|AI|ME|CAE)-T[0-9]{3}$"},
         "level": {"enum": ["C0", "C1", "C2", "C3"]},
         "result": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_APPLICABLE"]},
         "executed_at": {"type": "string", "format": "date-time"},

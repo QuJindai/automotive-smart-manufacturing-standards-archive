@@ -1,0 +1,354 @@
+name: Validate P0-08 conformity effectiveness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-conformity-assessment-v1/**'
+      - 'machine-readable/p0-08/**'
+      - 'machine-readable/v1/evidence.schema.json'
+      - 'docs/superpowers/specs/2026-08-28-p0-08-conformity-effectiveness-design.md'
+      - '.github/workflows/validate-p0-08-conformity-effectiveness.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'reference-implementation/p-conformity-assessment-v1/**'
+      - 'machine-readable/p0-08/**'
+      - 'machine-readable/v1/evidence.schema.json'
+      - 'docs/superpowers/specs/2026-08-28-p0-08-conformity-effectiveness-design.md'
+      - '.github/workflows/validate-p0-08-conformity-effectiveness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  p0-08-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python and independent Node contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd reference-implementation/p-conformity-assessment-v1
+          PYTHONPATH=. python -m unittest discover -s tests -v 2>&1 | tee /tmp/pcae-tests.log
+
+      - name: Execute C0-C3 Golden assessments
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pcae-c0 /tmp/pcae-c1 /tmp/pcae-c2 /tmp/pcae-c3
+          declare -A CASES=(
+            [c0]=c0-supplier
+            [c1]=c1-lab
+            [c2]=c2-fat-sat
+            [c3]=c3-continuous
+          )
+          for level in c0 c1 c2 c3; do
+            python reference-implementation/p-conformity-assessment-v1/run_reference.py \
+              --package "reference-implementation/p-conformity-assessment-v1/examples/${CASES[$level]}" \
+              --out "/tmp/pcae-$level" | tee "/tmp/pcae-$level.log"
+            grep -q 'CAE_REQUIRED_FAILURES=0' "/tmp/pcae-$level.log"
+            grep -q 'CAE_PASS=20' "/tmp/pcae-$level.log"
+            grep -q 'CAE_FAIL=0' "/tmp/pcae-$level.log"
+            grep -q 'CAE_BLOCKED=0' "/tmp/pcae-$level.log"
+            grep -q 'CAE_OVERALL_DECISION=PASS' "/tmp/pcae-$level.log"
+            grep -q 'CAE_LIFECYCLE_STATE=VALID' "/tmp/pcae-$level.log"
+          done
+
+      - name: Independent Node verification for all Goldens
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A CASES=(
+            [c0]=c0-supplier
+            [c1]=c1-lab
+            [c2]=c2-fat-sat
+            [c3]=c3-continuous
+          )
+          for level in c0 c1 c2 c3; do
+            node reference-implementation/p-conformity-assessment-v1/independent-verifier/verify.mjs \
+              "reference-implementation/p-conformity-assessment-v1/examples/${CASES[$level]}" \
+              | tee "/tmp/pcae-node-$level.json"
+          done
+          python - <<'PY'
+          import json
+          for level in ('c0','c1','c2','c3'):
+              data=json.load(open(f'/tmp/pcae-node-{level}.json',encoding='utf-8'))
+              assert data['valid'] is True, (level,data)
+              assert data['overall_decision']=='PASS', (level,data)
+              assert data['lifecycle_state']=='VALID', (level,data)
+              assert data['evidence_hashes_valid'] is True
+              assert data['metrics_valid'] is True
+              assert data['predecessor_rules_valid'] is True
+              assert data['baseline_bindings_valid'] is True
+              assert data['drift_declaration_valid'] is True
+              assert data['reevaluation_valid'] is True
+              assert data['trace_valid'] is True
+              assert data['certification_claim'] is False
+          print('P0_08_NODE_GOLDENS=PASS')
+          PY
+
+      - name: Execute negative and lifecycle registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python reference-implementation/p-conformity-assessment-v1/run_negative_cases.py \
+            --out /tmp/pcae-negative-summary.json | tee /tmp/pcae-negative.log
+          grep -q 'CAE_NEGATIVE_CASES=18' /tmp/pcae-negative.log
+          grep -q 'CAE_NEGATIVE_FALSE_PASSES=0' /tmp/pcae-negative.log
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/pcae-negative-summary.json',encoding='utf-8'))
+          assert data['case_count']==18
+          assert data['false_pass_count']==0
+          by_id={row['case_id']:row for row in data['cases']}
+          assert by_id['NEG-MATERIAL-DRIFT']['observed_result']=='PASS'
+          assert by_id['NEG-MATERIAL-DRIFT']['observed_lifecycle_state']=='REEVALUATION_REQUIRED'
+          assert by_id['NEG-EXPIRED']['observed_result']=='FAIL'
+          assert by_id['NEG-EXPIRED']['observed_lifecycle_state']=='EXPIRED'
+          assert by_id['NEG-UPSTREAM-HASH']['observed_result']=='FAIL'
+          assert by_id['NEG-METRIC-TAMPER']['observed_result']=='FAIL'
+          assert by_id['NEG-FAKE-CERTIFICATION']['observed_result']=='FAIL'
+          print('P0_08_NEGATIVE_LIFECYCLE=PASS')
+          PY
+
+      - name: Execute truthful material drift lifecycle sample
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pcae-drift-input /tmp/pcae-drift
+          cp -a reference-implementation/p-conformity-assessment-v1/examples/c3-continuous /tmp/pcae-drift-input
+          python - <<'PY'
+          import json,pathlib
+          path=pathlib.Path('/tmp/pcae-drift-input/package.json')
+          pkg=json.loads(path.read_text(encoding='utf-8'))
+          pkg['observed_baseline']['parameter_hash']='0'*64
+          pkg['declared_material_drift']=True
+          pkg['claimed_reevaluation_state']='REQUIRED'
+          pkg['drifts']=[{
+              'drift_id':'DRIFT-MATERIAL-001',
+              'material':True,
+              'status':'OPEN',
+              'description':'synthetic parameter baseline change'
+          }]
+          path.write_text(json.dumps(pkg,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python reference-implementation/p-conformity-assessment-v1/run_reference.py \
+            --package /tmp/pcae-drift-input \
+            --out /tmp/pcae-drift | tee /tmp/pcae-drift.log
+          grep -q 'CAE_REQUIRED_FAILURES=0' /tmp/pcae-drift.log
+          grep -q 'CAE_PASS=20' /tmp/pcae-drift.log
+          grep -q 'CAE_OVERALL_DECISION=PASS' /tmp/pcae-drift.log
+          grep -q 'CAE_LIFECYCLE_STATE=REEVALUATION_REQUIRED' /tmp/pcae-drift.log
+          node reference-implementation/p-conformity-assessment-v1/independent-verifier/verify.mjs \
+            /tmp/pcae-drift-input | tee /tmp/pcae-node-drift.json
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/pcae-node-drift.json',encoding='utf-8'))
+          assert data['valid'] is True
+          assert data['overall_decision']=='PASS'
+          assert data['lifecycle_state']=='REEVALUATION_REQUIRED'
+          assert data['drift_declaration_valid'] is True
+          assert data['reevaluation_valid'] is True
+          print('P0_08_TRUTHFUL_DRIFT=PASS')
+          PY
+
+      - name: Validate standardized outputs and common evidence vocabulary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,re
+          expected_outputs={
+              'assessment-summary.json','criteria-results.json','effectiveness-metrics.json',
+              'evidence-trace.json','reevaluation-state.json','conformity-statement.json',
+              'validator-evidence.json'
+          }
+          cross={
+              'schema_version':'1.0',
+              'profile_id':'P-CAE-AUTO-R14',
+              'goldens':{},
+              'negative_case_count':18,
+              'negative_false_pass_count':0,
+              'truthful_material_drift':'PASS_REEVALUATION_REQUIRED',
+              'independent_node_verifier':'PASS',
+              'weighted_score_used':False,
+              'certification_claim':False
+          }
+          for level in ('c0','c1','c2','c3'):
+              root=pathlib.Path(f'/tmp/pcae-{level}')
+              assert {p.name for p in root.iterdir() if p.is_file()}==expected_outputs
+              summary=json.loads((root/'assessment-summary.json').read_text(encoding='utf-8'))
+              criteria=json.loads((root/'criteria-results.json').read_text(encoding='utf-8'))
+              metrics=json.loads((root/'effectiveness-metrics.json').read_text(encoding='utf-8'))
+              statement=json.loads((root/'conformity-statement.json').read_text(encoding='utf-8'))
+              evidence=json.loads((root/'validator-evidence.json').read_text(encoding='utf-8'))
+              assert summary['counts']=={'PASS':20,'FAIL':0,'BLOCKED':0,'NOT_APPLICABLE':0}
+              assert summary['required_failures']==0
+              assert summary['overall_decision']=='PASS'
+              assert summary['lifecycle_state']=='VALID'
+              assert statement['certification_claim'] is False
+              assert statement['signature_state']=='UNSIGNED'
+              assert statement['statement_type']=='CONFORMITY_EVALUATION_STATEMENT'
+              assert metrics['weighted_score'] is None
+              assert len(metrics['metrics'])==8
+              assert [r['test_id'] for r in criteria['results']]==[f'CAE-T{i:03d}' for i in range(1,21)]
+              assert all(r['result']=='PASS' for r in criteria['results'])
+              assert evidence['environment']['certification_claim'] is False
+              assert [r['test_id'] for r in evidence['test_results']]==[f'CAE-T{i:03d}' for i in range(1,21)]
+              assert all(r['result']=='PASS' for r in evidence['test_results'])
+              cross['goldens'][level]={
+                  'assessment_level':summary['assessment_level'],
+                  'counts':summary['counts'],
+                  'overall_decision':summary['overall_decision'],
+                  'lifecycle_state':summary['lifecycle_state']
+              }
+          common=pathlib.Path('machine-readable/v1/evidence.schema.json').read_text(encoding='utf-8')
+          assert 'AAS|AI|ME|CAE' in common
+          pathlib.Path('/tmp/pcae-cross-implementation-summary.json').write_text(
+              json.dumps(cross,indent=2,sort_keys=True),encoding='utf-8')
+          print('P0_08_STANDARD_OUTPUTS=PASS')
+          PY
+
+      - name: Validate upstream proof binding and non-duplication boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,hashlib
+          repo=pathlib.Path('.')
+          profile=json.loads((repo/'machine-readable/p0-08/automotive-profile-v1.json').read_text(encoding='utf-8'))
+          upstream={row['standard_id']:row for row in profile['upstream_sources']}
+          assert upstream['P0-02']['status_path']=='archive/p-aas-v2-cross-validation-status.json'
+          assert upstream['P0-02']['status_blob_sha']=='6ed4df5d09c8806e03a93476cee68834030fbca8'
+          assert upstream['P0-06']['status_path']=='archive/p0-06-manufacturing-evidence-status.json'
+          assert upstream['P0-06']['status_blob_sha']=='83c97f63306c644e4e6ff1bc8de2640fd1def66b'
+          source=(repo/'reference-implementation/p-conformity-assessment-v1/pcae/evaluator.py').read_text(encoding='utf-8')
+          assert 'p-aas-v2/run_external.py' not in source
+          assert 'p-manufacturing-evidence-v1/run_reference.py' not in source
+          assert 'subprocess' not in source
+          for name in ('c1-lab','c2-fat-sat','c3-continuous'):
+              pkg=json.loads((repo/f'reference-implementation/p-conformity-assessment-v1/examples/{name}/package.json').read_text(encoding='utf-8'))
+              for ref in pkg['evidence_refs']:
+                  if ref.get('source_stage') in {
+                      'R14_P0_02_DUAL_IMPLEMENTATION_CROSS_VALIDATION',
+                      'R14_P0_06_MANUFACTURING_EVIDENCE_CHAIN_PROTOTYPE'
+                  }:
+                      path=repo/f'reference-implementation/p-conformity-assessment-v1/examples/{name}'/ref['uri']
+                      proof=json.loads(path.read_text(encoding='utf-8'))
+                      assert proof['source_blob_sha']==pkg['baseline'][
+                          'p0_02_status_blob_sha' if proof['standard_id']=='P0-02' else 'p0_06_status_blob_sha'
+                      ]
+          print('P0_08_UPSTREAM_BINDING=PASS')
+          PY
+
+      - name: Stage self-contained immutable evidence and privacy scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pcae-inputs /tmp/pcae-machine-readable /tmp/pcae-standard /tmp/pcae-upstream
+          mkdir -p /tmp/pcae-inputs /tmp/pcae-machine-readable /tmp/pcae-standard /tmp/pcae-upstream
+          cp -a reference-implementation/p-conformity-assessment-v1/examples /tmp/pcae-inputs/examples
+          cp reference-implementation/p-conformity-assessment-v1/fixtures/negative-cases.json /tmp/pcae-inputs/
+          cp machine-readable/p0-08/conformity-assessment-v1.schema.json /tmp/pcae-machine-readable/
+          cp machine-readable/p0-08/automotive-profile-v1.json /tmp/pcae-machine-readable/
+          cp machine-readable/p0-08/conformance-criteria-v1.json /tmp/pcae-machine-readable/
+          cp machine-readable/v1/evidence.schema.json /tmp/pcae-machine-readable/common-conformity-evidence.schema.json
+          cp archive/p-aas-v2-cross-validation-status.json /tmp/pcae-upstream/
+          cp archive/p0-06-manufacturing-evidence-status.json /tmp/pcae-upstream/
+          cp docs/superpowers/specs/2026-08-28-p0-08-conformity-effectiveness-design.md /tmp/pcae-standard/
+          cp reference-implementation/p-conformity-assessment-v1/README.md /tmp/pcae-standard/
+          python - <<'PY'
+          import hashlib,json,pathlib,re
+          roots=[
+              pathlib.Path('/tmp/pcae-c0'),pathlib.Path('/tmp/pcae-c1'),
+              pathlib.Path('/tmp/pcae-c2'),pathlib.Path('/tmp/pcae-c3'),
+              pathlib.Path('/tmp/pcae-drift'),pathlib.Path('/tmp/pcae-drift-input'),
+              pathlib.Path('/tmp/pcae-inputs'),pathlib.Path('/tmp/pcae-machine-readable'),
+              pathlib.Path('/tmp/pcae-standard'),pathlib.Path('/tmp/pcae-upstream')
+          ]
+          extra=[
+              pathlib.Path('/tmp/pcae-tests.log'),
+              pathlib.Path('/tmp/pcae-c0.log'),pathlib.Path('/tmp/pcae-c1.log'),
+              pathlib.Path('/tmp/pcae-c2.log'),pathlib.Path('/tmp/pcae-c3.log'),
+              pathlib.Path('/tmp/pcae-drift.log'),
+              pathlib.Path('/tmp/pcae-negative-summary.json'),pathlib.Path('/tmp/pcae-negative.log'),
+              pathlib.Path('/tmp/pcae-cross-implementation-summary.json'),
+              pathlib.Path('/tmp/pcae-node-c0.json'),pathlib.Path('/tmp/pcae-node-c1.json'),
+              pathlib.Path('/tmp/pcae-node-c2.json'),pathlib.Path('/tmp/pcae-node-c3.json'),
+              pathlib.Path('/tmp/pcae-node-drift.json')
+          ]
+          entries=[]
+          privacy_patterns=[
+              re.compile(r'drive\.google\.com',re.I),re.compile(r'docs\.google\.com',re.I),
+              re.compile(r"\baccess_token\b\s*[:=]\s*['\"]?[A-Za-z0-9_.\-]{12,}",re.I),
+              re.compile(r"\brefresh_token\b\s*[:=]\s*['\"]?[A-Za-z0-9_.\-]{12,}",re.I),
+              re.compile(r'authorization:\s*bearer\s+[A-Za-z0-9_.\-]{12,}',re.I),
+              re.compile(r'\bghp_[A-Za-z0-9]+'),re.compile(r'\bgithub_pat_[A-Za-z0-9_]+'),
+              re.compile(r'\bsk-[A-Za-z0-9_-]{16,}')
+          ]
+          files=[]
+          for root in roots:
+              files.extend(sorted(p for p in root.rglob('*') if p.is_file()))
+          files.extend(p for p in extra if p.is_file())
+          for path in sorted(set(files),key=str):
+              data=path.read_bytes()
+              try: relative=str(path.relative_to('/tmp'))
+              except ValueError: relative=str(path)
+              entries.append({'path':relative,'size_bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+              if path.suffix.lower() in {'.json','.md','.txt','.log','.yml','.yaml','.py','.mjs'}:
+                  text=data.decode('utf-8',errors='replace')
+                  for pattern in privacy_patterns:
+                      assert not pattern.search(text), (relative,pattern.pattern)
+          index={
+              'schema_version':'1.0',
+              'stage':'R14_P0_08_IMPLEMENTATION_EFFECTIVENESS_CONFORMANCE_PROTOTYPE',
+              'self_contained':True,
+              'file_count':len(entries),
+              'index_excludes_self':True,
+              'files':entries,
+              'weighted_score_used':False,
+              'certification_claim':False
+          }
+          pathlib.Path('/tmp/pcae-artifact-index.json').write_text(
+              json.dumps(index,indent=2,sort_keys=True),encoding='utf-8')
+          print('P0_08_SELF_CONTAINED_ARTIFACT=PASS files='+str(len(entries)))
+          PY
+
+      - name: Upload one-day P0-08 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-08-conformity-effectiveness-${{ github.run_id }}
+          path: |
+            /tmp/pcae-c0/
+            /tmp/pcae-c1/
+            /tmp/pcae-c2/
+            /tmp/pcae-c3/
+            /tmp/pcae-drift/
+            /tmp/pcae-drift-input/
+            /tmp/pcae-inputs/
+            /tmp/pcae-machine-readable/
+            /tmp/pcae-standard/
+            /tmp/pcae-upstream/
+            /tmp/pcae-tests.log
+            /tmp/pcae-c0.log
+            /tmp/pcae-c1.log
+            /tmp/pcae-c2.log
+            /tmp/pcae-c3.log
+            /tmp/pcae-drift.log
+            /tmp/pcae-negative-summary.json
+            /tmp/pcae-negative.log
+            /tmp/pcae-cross-implementation-summary.json
+            /tmp/pcae-node-c0.json
+            /tmp/pcae-node-c1.json
+            /tmp/pcae-node-c2.json
+            /tmp/pcae-node-c3.json
+            /tmp/pcae-node-drift.json
+            /tmp/pcae-artifact-index.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6

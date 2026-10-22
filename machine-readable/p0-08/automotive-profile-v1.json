@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "profile_id": "P-CAE-AUTO-R14",
+  "profile_version": "1.0",
+  "name": "Automotive Smart Manufacturing Conformity Assessment & Effectiveness Profile",
+  "assessment_levels": ["C0", "C1", "C2", "C3"],
+  "level_roles": {
+    "C0": "SUPPLIER_DECLARANT",
+    "C1": "LAB_EVALUATOR",
+    "C2": "FAT_SAT_EVALUATOR",
+    "C3": "OPERATIONS_MONITOR"
+  },
+  "required_conformance_tests": [
+    "CAE-T001", "CAE-T002", "CAE-T003", "CAE-T004", "CAE-T005",
+    "CAE-T006", "CAE-T007", "CAE-T008", "CAE-T009", "CAE-T010",
+    "CAE-T011", "CAE-T012", "CAE-T013", "CAE-T014", "CAE-T015",
+    "CAE-T016", "CAE-T017", "CAE-T018", "CAE-T019", "CAE-T020"
+  ],
+  "proof_types": [
+    "MODEL", "PROFILE_DECLARATION", "AUTOMATED_TEST", "LAB_REPORT",
+    "FAT_SAT_EVIDENCE", "CONTINUOUS_EVIDENCE", "ATTESTATION", "EXCEPTION_RECORD"
+  ],
+  "upstream_sources": [
+    {"standard_id": "P0-02", "status_path": "archive/p-aas-v2-cross-validation-status.json", "status_blob_sha": "6ed4df5d09c8806e03a93476cee68834030fbca8"},
+    {"standard_id": "P0-06", "status_path": "archive/p0-06-manufacturing-evidence-status.json", "status_blob_sha": "83c97f63306c644e4e6ff1bc8de2640fd1def66b"}
+  ],
+  "overall_decision_precedence": ["FAIL", "BLOCKED", "PASS"],
+  "weighted_score_allowed": false,
+  "certification_claim": false
+}
