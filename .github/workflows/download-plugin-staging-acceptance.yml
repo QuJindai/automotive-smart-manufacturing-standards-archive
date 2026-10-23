@@ -29,7 +29,7 @@ jobs:
           init=json.load(open('init.json'))
           tools=json.load(open('tools.json'))
           assert init['result']['protocolVersion']=='2025-06-18'
-          assert init['result']['serverInfo']=={'name':'下载','version':'0.5.1-queue-watchdog'}
+          assert init['result']['serverInfo']=={'name':'下载','version':'0.5.2-purpose-aware'}
           definitions=tools['result']['tools']
           names=[item['name'] for item in definitions]
           assert names==[
@@ -63,7 +63,7 @@ jobs:
           job=result['structuredContent']
           assert job['status']=='QUEUED', job
           assert job['next_action']['action']=='WAIT_EXECUTOR', job
-          assert job['destination']=='Google Drive/下载插件预发布'
+          assert job['destination']=='Google Drive/下载/下载插件预发布'
           print('DOWNLOAD_DIRECT_QUEUE=PASS',job['download_id'])
           PY
 

@@ -573,6 +573,16 @@ def run_small_asset(asset: dict, out_dir: Path) -> AssetResult:
     return last
 
 
+def artifact_upload_allowed(job: dict) -> bool:
+    return job.get("purpose") != "personal_archive"
+
+
+def preflight_source_size(job: dict, asset: dict) -> int:
+    if job.get("purpose") == "personal_archive" and not (job.get("upload_sessions") or {}).get(str(asset.get("asset_id") or "")):
+        return 0  # Let run_job report the session error without touching the source.
+    return int(asset.get("expected_size_bytes") or 0) or source_size(str(asset.get("source_url") or "")) or 0
+
+
 def run_job(job: dict, out_dir: Path) -> dict:
     assets = job.get("assets")
     if not isinstance(assets, list) or not assets:
@@ -593,11 +603,17 @@ def run_job(job: dict, out_dir: Path) -> dict:
                     result = AssetResult(asset_id=str(raw.get("asset_id") or staged.asset_id or ""), filename=str(raw.get("filename") or staged.filename or "download.bin"), status="FAIL", bytes=0, sha256=None, method="drive-resumable-local", error="staged artifact metadata incomplete", artifact_path=staged.artifact_path, source_url_redacted=redact_url(str(raw.get("source_url") or "")) if raw.get("source_url") else None)
                 else:
                     result = staged
+        elif job.get("purpose") == "personal_archive":
+            code = "PRIVATE_DESTINATION_REQUIRED" if job.get("drive_session_error") == "PRIVATE_DESTINATION_REQUIRED" else "PRIVATE_DRIVE_SESSION_REQUIRED"
+            result = AssetResult(asset_id=str(raw.get("asset_id") or ""), filename=str(raw.get("filename") or "download.bin"), status="FAIL", bytes=0, sha256=None, method="private-drive-required", error="Private owner-only Drive destination and upload session required; no artifact fallback", error_code=code)
         else:
             result = run_small_asset(raw, out_dir)
         results.append(result)
     drive_refs = [r.drive_ref for r in results if r.drive_ref and r.status == "PASS"]
-    return {"download_id": job.get("download_id"), "assets": [asdict(r) for r in results], "drive_refs": drive_refs, "pass_count": sum(r.status == "PASS" for r in results), "fail_count": sum(r.status != "PASS" for r in results)}
+    result = {"download_id": job.get("download_id"), "assets": [asdict(r) for r in results], "drive_refs": drive_refs, "pass_count": sum(r.status == "PASS" for r in results), "fail_count": sum(r.status != "PASS" for r in results)}
+    if any(r.error_code == "PRIVATE_DRIVE_SESSION_REQUIRED" for r in results):
+        result["auth_required"] = True
+    return result
 
 
 def apply_drive_verification(data: dict, verification: dict) -> dict:

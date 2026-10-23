@@ -110,12 +110,16 @@ test("source resolution schema documents every accepted source field", () => {
     "license_class",
     "official",
     "redistributable",
+    "publicly_accessible",
+    "access_restriction",
+    "rights_evidence_url",
     "expected_size_bytes",
     "expected_sha256",
   ]);
   assert.equal(item.properties.source_url.format, "uri");
   assert.equal(item.properties.official.const, true);
-  assert.equal(item.properties.redistributable.const, true);
+  assert.equal(item.properties.redistributable.type, "boolean");
+  assert.equal(item.properties.redistributable.const, undefined);
   assert.equal(item.properties.expected_sha256.pattern, "^[A-Fa-f0-9]{64}$");
   assert.equal(item.additionalProperties, false);
   assert.match(

@@ -11,7 +11,7 @@ STAGING_ACCEPTANCE = (
 
 class QueueWorkflowContracts(unittest.TestCase):
     def test_staging_acceptance_requires_current_server_version(self):
-        self.assertIn("0.5.1-queue-watchdog", STAGING_ACCEPTANCE)
+        self.assertIn("0.5.2-purpose-aware", STAGING_ACCEPTANCE)
         self.assertNotIn("0.4.0-autonomous-queue", STAGING_ACCEPTANCE)
 
     def test_schedule_and_manual_recovery_are_enabled(self):

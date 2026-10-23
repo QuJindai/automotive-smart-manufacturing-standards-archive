@@ -30,3 +30,11 @@ test('invalid id, name, size, parent and trashed file fail closed', () => {
     assert.throws(() => verifyDriveMetadata({...ref, ...change}, metadata, 'leaf'));
   }
 });
+
+test('personal Drive verification rejects shared destinations and missing privacy metadata', () => {
+  const privateMetadata = {...metadata, shared: false, ownedByMe: true, permissions: [{type: 'user', role: 'owner'}]};
+  assert.equal(verifyDriveMetadata(ref, privateMetadata, 'leaf', true).private_verified, true);
+  for (const patch of [{shared: true}, {shared: undefined}, {ownedByMe: false}, {driveId: 'team'}, {permissions: []}, {permissions: [{type: 'anyone', role: 'reader'}]}, {permissions: [{type: 'user', role: 'writer'}]}]) {
+    assert.throws(() => verifyDriveMetadata(ref, {...privateMetadata, ...patch}, 'leaf', true), /private/);
+  }
+});

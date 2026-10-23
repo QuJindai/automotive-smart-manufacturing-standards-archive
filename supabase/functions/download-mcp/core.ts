@@ -173,13 +173,19 @@ export function buildAsset(value: unknown, index: number) {
 export function buildInitialJob(args: JsonObject, now: string, downloadId: string) {
   const request = requireText(args.request, "request");
   assertPolicy(request);
-  const assets = extractUrls(request).map((url, index) => buildAsset(url, index));
+  const constraints = isPlainObject(args.constraints) ? args.constraints : {};
+  const purpose = constraints.purpose ?? "personal_archive";
+  if (purpose !== "personal_archive" && purpose !== "public_redistribution") throw new Error("invalid download purpose");
+  const urls = extractUrls(request);
+  // Public redistribution requires explicit source rights even for direct URLs.
+  const assets = purpose === "personal_archive" ? urls.map((url, index) => buildAsset(url, index)) : [];
   const queued = assets.length > 0;
   return {
     download_id: downloadId,
     request,
     destination: canonicalDestination(args.destination),
-    constraints: isPlainObject(args.constraints) ? args.constraints : {},
+    constraints,
+    purpose,
     current_stage: queued ? "QUEUED" : "RESOLVING",
     last_verified_stage: queued ? "RESOLVING" : "PLANNED",
     status: queued ? "QUEUED" : "RESOLVING",
@@ -224,7 +230,7 @@ function optionalSha256(value: unknown, name: string): string | undefined {
   return digest;
 }
 
-function normalizeSources(value: unknown) {
+function normalizeSources(value: unknown, purpose: unknown) {
   if (!Array.isArray(value)) throw new Error("sources must be an array");
   if (value.length > 20) throw new Error("source limit exceeded");
   const filenames = new Set<string>();
@@ -233,8 +239,22 @@ function normalizeSources(value: unknown) {
   return value.map((entry, index) => {
     if (!isPlainObject(entry)) throw new Error(`sources[${index}] must be an object`);
     if (entry.official !== true) throw new Error(`sources[${index}] must be official`);
-    if (entry.redistributable !== true) {
+    if (typeof entry.redistributable !== "boolean") throw new Error(`sources[${index}].redistributable must be boolean`);
+    if (entry.access_restriction !== undefined && entry.access_restriction !== "none") {
+      throw new Error(`sources[${index}] has an access restriction; public download is unavailable`);
+    }
+    if (entry.publicly_accessible === false) throw new Error(`sources[${index}] is not publicly accessible`);
+    if (purpose !== "personal_archive" && entry.redistributable !== true) {
       throw new Error(`sources[${index}] must be explicitly redistributable`);
+    }
+    // An official public download is not an assertion of a redistribution license.
+    // This is a caller-supplied provenance assertion, just like official/redistributable.
+    if (!entry.redistributable) {
+      if (entry.publicly_accessible !== true || entry.access_restriction !== "none") {
+        throw new Error(`non-redistributable sources[${index}] require public access evidence`);
+      }
+      requireText(entry.license_class, `sources[${index}].license_class access basis`);
+      safeUrl(requireText(entry.rights_evidence_url, `sources[${index}].rights_evidence_url`));
     }
     const parsed = safeUrl(entry.source_url);
     const canonicalUrl = parsed.toString();
@@ -261,7 +281,10 @@ function normalizeSources(value: unknown) {
       requested_item: typeof entry.requested_item === "string" ? entry.requested_item.trim() : null,
       license_class: typeof entry.license_class === "string" ? entry.license_class.trim() : null,
       official: true,
-      redistributable: true,
+      redistributable: entry.redistributable,
+      ...(entry.publicly_accessible !== undefined ? { publicly_accessible: entry.publicly_accessible } : {}),
+      ...(entry.access_restriction !== undefined ? { access_restriction: entry.access_restriction } : {}),
+      ...(entry.rights_evidence_url !== undefined ? { rights_evidence_url: safeUrl(entry.rights_evidence_url).toString() } : {}),
       ...(expectedSize ? { expected_size_bytes: expectedSize } : {}),
       ...(expectedSha256 ? { expected_sha256: expectedSha256 } : {}),
     };
@@ -277,7 +300,7 @@ export function applySourceResolution(
   input: Record<string, any>,
   now: string,
 ) {
-  const assets = normalizeSources(input.sources ?? []);
+  const assets = normalizeSources(input.sources ?? [], job.purpose);
   const unresolved = normalizeUnresolved(input.unresolved ?? []);
   const fingerprint = sourceFingerprint(assets, unresolved);
 
@@ -427,7 +450,8 @@ export function applyExecutorResult(
   const everyPassHasDriveEvidence = everyAssetPassed && next.assets.every((asset: Record<string, any>) => {
     const ref = referenceByName.get(String(asset.filename ?? ""));
     return ref && Number(ref.size) === Number(asset.expected_size_bytes) &&
-      ref.sha256 === asset.expected_sha256;
+      ref.sha256 === asset.expected_sha256 &&
+      (job.purpose !== "personal_archive" || (ref.private_verified === true && ref.checksum_verified === true));
   });
 
   if (everyAssetPassed && result.drive_verified === true && everyPassHasDriveEvidence) {
@@ -538,7 +562,7 @@ export function buildToolDefinitions() {
   return [
     {
       name: "start_download",
-      description: "Create a durable download job. Direct public HTTPS URLs queue automatically; names and standard numbers require source resolution.",
+      description: "Create a download job, defaulting to personal archival in unshared Google Drive. Direct public HTTPS URLs queue automatically for personal use; names and public_redistribution jobs require source resolution. Never bypass access controls or use personal_archive for a requested public distribution.",
       inputSchema: {
         type: "object",
         properties: {
@@ -547,7 +571,9 @@ export function buildToolDefinitions() {
             type: "string",
             description: "Optional relative Google Drive folder below the plugin-owned 下载 root; do not include a leading slash or filename.",
           },
-          constraints: { type: "object", additionalProperties: true },
+          constraints: { type: "object", additionalProperties: true, properties: {
+            purpose: { type: "string", enum: ["personal_archive", "public_redistribution"], default: "personal_archive", description: "personal_archive saves only to unshared owner-only Drive and creates no GitHub transfer artifact. public_redistribution requires redistribution permission; this tool does not itself publish or change sharing." },
+          } },
         },
         required: ["request"],
         additionalProperties: false,
@@ -556,23 +582,26 @@ export function buildToolDefinitions() {
     },
     {
       name: "resolve_download_sources",
-      description: "Submit official, legal, publicly redistributable HTTPS sources found for an existing RESOLVING job.",
+      description: "Resolve official HTTPS sources for a RESOLVING job. Personal archival can use official publicly offered downloads without a redistribution license; keep redistributable=false and provide public access evidence. Public redistribution still requires redistributable=true. Do not bypass login, paywalls, DRM, or explicit personal-copy restrictions.",
       inputSchema: {
         type: "object",
         properties: {
           download_id: { type: "string" },
           sources: {
             type: "array",
-            description: "Official HTTPS files whose public redistribution is explicitly permitted.",
+            description: "Official download sources with truthful rights and access assertions appropriate to the job purpose.",
             items: {
               type: "object",
               properties: {
                 requested_item: { type: "string", description: "Original document name or standard number." },
                 source_url: { type: "string", format: "uri", description: "Direct public HTTPS download URL." },
                 filename: { type: "string", description: "Safe destination filename including its extension." },
-                license_class: { type: "string", description: "Short redistribution basis, license, or public-document class." },
+                license_class: { type: "string", description: "License or factual access basis. For personal-only sources describe the official public download; do not invent redistribution rights." },
                 official: { type: "boolean", const: true, description: "Must be true; only official sources are accepted." },
-                redistributable: { type: "boolean", const: true, description: "Must be true after checking public redistribution rights." },
+                redistributable: { type: "boolean", description: "True only when public redistribution is permitted. False also represents unconfirmed redistribution rights; personal_archive may still qualify with access evidence." },
+                publicly_accessible: { type: "boolean", description: "Official provider publicly offers the download without payment or authentication. Required true when redistributable is false." },
+                access_restriction: { type: "string", enum: ["none", "login", "paywall", "drm", "personal_copy_prohibited", "unknown"], description: "Known access/copy restriction. Only none qualifies; required for personal-only sources." },
+                rights_evidence_url: { type: "string", format: "uri", description: "Official HTTPS landing page or terms supporting the download/access assertion. Required when redistributable is false." },
                 expected_size_bytes: { type: "integer", minimum: 1 },
                 expected_sha256: { type: "string", pattern: "^[A-Fa-f0-9]{64}$" },
               },

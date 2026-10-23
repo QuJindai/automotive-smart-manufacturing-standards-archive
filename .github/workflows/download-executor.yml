@@ -79,6 +79,7 @@ jobs:
           echo "DOWNLOAD_ID=$id"
 
       - name: Fetch secret job payload
+        id: payload
         if: steps.descriptor.outputs.found == 'true'
         shell: bash
         env:
@@ -91,10 +92,13 @@ jobs:
             "https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp/executor/job/$DOWNLOAD_ID" \
             -o job.json
           python - <<'PY'
-          import json
+          import json, os
+          from scripts.download_executor import artifact_upload_allowed
           j=json.load(open('job.json'))
           assert j.get('download_id')
           assert isinstance(j.get('assets'),list) and j['assets']
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('artifact_allowed=' + str(artifact_upload_allowed(j)).lower() + '\n')
           print('EXECUTOR_JOB_FETCH=PASS',j['download_id'],len(j['assets']))
           PY
 
@@ -132,12 +136,17 @@ jobs:
             python - <<'PY'
           import json
           response=json.load(open('drive-sessions.json'))
-          assert response.get('code')=='AUTH_REQUIRED', response
-          assert response.get('scope')=='https://www.googleapis.com/auth/drive.file', response
+          assert response.get('code') in ('AUTH_REQUIRED','PRIVATE_DESTINATION_REQUIRED')
+          if response['code']=='AUTH_REQUIRED':
+              assert response.get('scope')=='https://www.googleapis.com/auth/drive.file'
+          else:
+              job=json.load(open('job.json'))
+              job['drive_session_error']=response['code']
+              json.dump(job,open('job.json','w'),ensure_ascii=False,separators=(',',':'))
           text=json.dumps(response).lower()
           for secret in ('refresh_token','access_token','client_secret','ciphertext','session_url','upload_sessions'):
               assert secret not in text, secret
-          print('DRIVE_SESSION_STATUS=AUTH_REQUIRED')
+          print('DRIVE_SESSION_STATUS=' + response['code'])
           PY
             rm -f drive-sessions.json
             echo 'status=auth_required' >> "$GITHUB_OUTPUT"
@@ -155,7 +164,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json
-          from scripts.download_executor import redact_url, source_size
+          from scripts.download_executor import redact_url, preflight_source_size
           j=json.load(open('job.json'))
           limit=int(j.get('small_limit_bytes') or 100*1024*1024)
           sessions=j.get('upload_sessions') or {}
@@ -163,11 +172,9 @@ jobs:
           for a in j.get('assets',[]):
               if not isinstance(a,dict):
                   continue
-              size=int(a.get('expected_size_bytes') or 0)
-              if not size:
-                  size=source_size(str(a.get('source_url') or '')) or 0
-                  if size:
-                      a['expected_size_bytes']=size
+              size=preflight_source_size(j,a)
+              if size:
+                  a['expected_size_bytes']=size
               aid=str(a.get('asset_id') or '')
               if size>limit and not sessions.get(aid):
                   blocked.append((a,size))
@@ -243,7 +250,7 @@ jobs:
           exit 0
 
       - name: Upload small-file transfer artifact
-        if: steps.descriptor.outputs.found == 'true'
+        if: steps.descriptor.outputs.found == 'true' && steps.payload.outputs.artifact_allowed == 'true'
         id: upload
         uses: actions/upload-artifact@v4
         with:

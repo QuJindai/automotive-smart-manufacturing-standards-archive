@@ -32,7 +32,7 @@ const ISSUER = "https://token.actions.githubusercontent.com";
 const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks`));
 const SMALL_LIMIT = 100 * 1024 * 1024;
 const MCP_PROTOCOL = "2025-06-18";
-const SERVER_VERSION = "0.5.1-queue-watchdog";
+const SERVER_VERSION = "0.5.2-purpose-aware";
 const EXECUTOR_LEASE_MS = 20 * 60_000;
 const SCHEDULER_STATE_KIND = "download_executor_scheduler";
 const GITHUB_APP_DISPATCHER = new GitHubAppDispatcher({
@@ -269,6 +269,7 @@ async function resume(args: Record<string, unknown>, stateKind: string) {
     : {};
   const type = requireText(result.type, "result.type");
   const job = structuredClone(row.payload);
+  if (job.purpose === "personal_archive") throw new Error("personal archives require executor independent Drive verification");
   if (type === "drive_archive_result") {
     if (!Array.isArray(result.drive_refs) || result.drive_refs.length === 0) {
       throw new Error("drive_archive_result requires drive_refs[]");
@@ -302,6 +303,10 @@ async function resume(args: Record<string, unknown>, stateKind: string) {
 async function retry(id: string, stateKind: string) {
   const row = await getJob(id, stateKind);
   const job = structuredClone(row.payload);
+  if (job.purpose === "personal_archive") {
+    job.drive_verified = false;
+    job.drive_refs = [];
+  }
   const failed = new Set(job.failed_files ?? []);
   job.assets = (job.assets ?? []).map((asset: Record<string, unknown>) =>
     failed.has(asset.filename) || asset.state === "FAIL"
@@ -328,6 +333,9 @@ async function finalize(id: string, allowPartial = false, stateKind: string) {
   const row = await getJob(id, stateKind);
   const job = structuredClone(row.payload);
   if (job.status === "COMPLETED") return job;
+  if (job.purpose === "personal_archive" && !(job.drive_refs?.length && job.drive_refs.every((ref: Record<string, unknown>) => ref.private_verified === true && ref.checksum_verified === true))) {
+    throw new Error("personal archive requires private verified Drive receipts");
+  }
   if (!job.drive_verified || !Array.isArray(job.drive_refs) || job.drive_refs.length === 0) {
     throw new Error("finalize requires verified Google Drive persistence");
   }
@@ -381,6 +389,7 @@ async function executorJob(id: string, stateKind: string) {
     download_id: id,
     assets: await hydrateSensitiveAssets(payload.assets, CONFIG_ENCRYPTION_KEY),
     destination: payload.destination,
+    purpose: payload.purpose,
     small_limit_bytes: SMALL_LIMIT,
     upload_sessions: {},
     evidence_required: true,
@@ -484,7 +493,7 @@ Deno.serve(async (req) => {
       protocolVersion: MCP_PROTOCOL,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: "下载", version: SERVER_VERSION },
-      instructions: "For a name or standard number without a URL, search the web for official, legal, publicly redistributable sources and call resolve_download_sources on the same download_id. Direct HTTPS jobs queue automatically. Report completion only after verified Google Drive persistence; never request a GitHub descriptor commit.",
+      instructions: "Default use is personal_archive: save to owner-only unshared Google Drive, never publish file bytes as GitHub artifacts or change sharing. Personal saving is distinct from public redistribution. For names, search official sources and resolve on the same download_id. An official publicly offered download without login, paywall, DRM, or explicit personal-copy restrictions may be used personally without claiming redistribution rights: set redistributable=false, publicly_accessible=true, access_restriction=none, rights_evidence_url to the official landing page, and license_class to the factual access basis. Never infer a redistribution license merely from public availability. If the user requests public distribution, set constraints.purpose=public_redistribution and require redistributable=true; direct URLs do not bypass this gate. Do not change purpose to evade rejection. For uncertain access rights report unresolved. Report completion only after independent checksum and (for personal archives) private Drive verification; never request a GitHub descriptor commit.",
     });
   }
   if (payload.method === "ping") return ok(req, id, {});
