@@ -13,6 +13,8 @@ def main():
     environment = os.environ.get('ACCEPTANCE_ENVIRONMENT', 'staging')
     if environment not in ('staging', 'production'):
         raise ValueError('invalid environment')
+    if not os.environ.get('MCP_PRIVATE_PATH'):
+        raise RuntimeError('MCP_PRIVATE_PATH must be supplied securely; no anonymous fallback is permitted')
     suffix = '-staging' if environment == 'staging' else ''
     endpoint = 'https://ezvfqrhzucjvkwnnbjux.supabase.co/functions/v1/download-mcp' + suffix + os.environ['MCP_PRIVATE_PATH']
 

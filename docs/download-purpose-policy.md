@@ -25,13 +25,18 @@ Deployment order: tested executor on main, compatible Drive verifier, then MCP.
 Stage the MCP contract first. Drain queued/in-progress executor runs pinned to
 older SHAs before enabling new personal jobs: pushing main does not update an
 already-started workflow. No database migration or OAuth change is required.
-The `Download Purpose Acceptance` workflow uses the existing masked MCP secret;
-staging tests rejection/acceptance and production submits paper, standard and
-large-file jobs through normal tools. It does not generate completion receipts.
+Run `scripts/download_purpose_acceptance.py` with the existing connection
+capability in the process-only `MCP_PRIVATE_PATH` environment variable. Never
+print it or commit it. Missing credentials fail closed, not as an anonymous test
+pass. No new permanent token or repository secret is required. Set
+`ACCEPTANCE_ENVIRONMENT=staging` for rejection/acceptance tests; `production`
+submits paper, standard and large-file jobs through normal MCP tools.
+The script does not generate completion receipts.
 Verify those jobs, Drive metadata and zero personal-job artifacts independently.
 Never rewrite a previously blocked job to claim a successful historical run.
 
-Rollback: stop new submissions before restoring the saved pre-release MCP and
-Drive sources. Keep the personal-artifact suppression in the executor: reverting
-that safety gate while personal jobs exist is unsafe. Diagnose/drain or explicitly
-cancel outstanding personal jobs before considering any older executor version.
+Rollback: stop new submissions and drain or explicitly cancel outstanding
+personal jobs before restoring any old MCP or executor version. An old MCP may
+drop purpose from the executor payload, so keeping only the new artifact gate
+is insufficient. Saved pre-release sources are for controlled recovery, not an
+automatic rollback while personal jobs remain. Keep artifact suppression enabled.
